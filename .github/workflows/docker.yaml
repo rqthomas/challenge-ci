@@ -5,6 +5,11 @@ name: docker container
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: build the image without pushing it'
+        type: boolean
+        default: false
   schedule:
     - cron: '0 0 * * *'
   push:
@@ -67,7 +72,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          # A dry run only checks that the image builds.
+          push: ${{ !inputs.dry_run }}
           tags: ${{ steps.names.outputs.tags }}
           # Mounted only while the GitHub installs run (see Dockerfile); not
           # stored in the image.
@@ -75,5 +81,5 @@ jobs:
             github_pat=${{ secrets.PAT }}
 
       - name: Healthcheck
-        if: steps.names.outputs.healthcheck != ''
+        if: steps.names.outputs.healthcheck != '' && !inputs.dry_run
         run: curl -m 10 --retry 5 "${{ steps.names.outputs.healthcheck }}"

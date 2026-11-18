@@ -43,6 +43,7 @@ Rscript inst/scripts/dashboard.R && quarto preview dashboard
 | [docs/operations.md](docs/operations.md) | workflows, schedules, secrets, reruns and recovery |
 | [docs/developing.md](docs/developing.md) | changing the code |
 | [docs/launching-a-new-challenge.md](docs/launching-a-new-challenge.md) | running a new challenge from this repository |
+| [AGENTS.md](AGENTS.md) | rules and known traps for anyone (or any AI agent) changing the code |
 
 See <[https://doi.org/10.1002/fee.2616](http://doi.org/10.22541/essoar.175917344.44115142/v1)> for more information on the structure of a forecasting challenge.
 

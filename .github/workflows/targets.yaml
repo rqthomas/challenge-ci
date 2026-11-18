@@ -5,8 +5,19 @@ on:
   schedule:
     - cron: '0 7 * * *'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: read real data, write nothing to S3 (output kept as an artifact)'
+        type: boolean
+        default: false
 
 name: target-generation
+
+# A manual dry run writes nothing to S3, publishes nothing and pings no
+# healthcheck (docs/operations.md). Scheduled runs have no inputs: real runs.
+env:
+  DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+  DRY_RUN_DIR: dry-run
 
 jobs:
   config:
@@ -45,6 +56,15 @@ jobs:
 
       - name: Generate targets
         run: Rscript ${{ matrix.script }}
+
+      - name: Keep the dry-run output
+        if: ${{ inputs.dry_run && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-targets-${{ matrix.group }}
+          path: dry-run/
+          retention-days: 7
+          if-no-files-found: warn
 
       - uses: ./.github/actions/healthcheck
         with:

@@ -7,6 +7,10 @@ on:
     - cron: '0 1 * * SUN'
   workflow_dispatch:
     inputs:
+      dry_run:
+        description: 'Dry run: read real data, write nothing to S3 (output kept as an artifact)'
+        type: boolean
+        default: false
       schedule:
         description: Which baselines to run
         type: choice
@@ -49,6 +53,15 @@ jobs:
       - name: Generate and submit forecasts
         run: Rscript inst/scripts/baselines.R "$SCHEDULE" "${{ matrix.group }}"
 
+      - name: Keep the dry-run output
+        if: ${{ inputs.dry_run && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-baselines-${{ matrix.group }}
+          path: dry-run/
+          retention-days: 7
+          if-no-files-found: warn
+
   healthcheck:
     needs: [config, baselines]
     runs-on: ubuntu-latest
@@ -61,6 +74,10 @@ jobs:
         with:
           name: baselines-${{ env.SCHEDULE }}
 
+# A manual dry run writes nothing to S3 and pings no healthcheck
+# (docs/operations.md). Scheduled runs have no inputs: real runs.
 env:
+  DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+  DRY_RUN_DIR: dry-run
   # The weekly cron, or a manual run that asked for weekly; otherwise daily.
   SCHEDULE: ${{ (github.event.schedule == '0 1 * * SUN' || inputs.schedule == 'weekly') && 'weekly' || 'daily' }}

@@ -60,9 +60,15 @@ deleted.
 
 - **Rerun a stage:** open the workflow in the Actions tab and choose *Run
   workflow*. Concurrency groups queue it behind any run in progress.
-- **Try a change without writing data:** run the entry script locally with
-  `DRY_RUN=true` (see [developing.md](developing.md)); writes go to
-  `DRY_RUN_DIR`.
+- **Try a change without writing data:** run the workflow manually with *dry
+  run* ticked. It runs on the real runner, image and secrets and reads the
+  real buckets, but sets `DRY_RUN=true`: nothing is written to S3, the catalog
+  is not pushed, the dashboard is not published and no healthcheck is pinged.
+  Targets, baselines, submissions, catalog and dashboard runs keep their output
+  as a downloadable artifact for 7 days (bundling, scoring and drivers do not,
+  because their output is large). A dry run of *docker container* builds the
+  image without pushing it. Locally, run the entry script with `DRY_RUN=true`
+  (see [developing.md](developing.md)); writes go to `DRY_RUN_DIR`.
 - **Rebuild stage 3 drivers from scratch:** run *drivers-stage3* manually with
   *rebuild* ticked. It can take many hours, so its timeout is 24 h.
 - **Run baselines by hand:** run *baseline-forecasts* manually and choose daily

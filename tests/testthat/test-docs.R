@@ -50,3 +50,23 @@ test_that("the workflows are valid YAML", {
     expect_no_error(suppressWarnings(yaml::read_yaml(f)))
   }
 })
+
+test_that("AGENTS.md names paths and functions that exist", {
+  root <- test_path("..", "..")
+  path <- file.path(root, "AGENTS.md")
+  skip_if_not(file.exists(path), "not running inside the repository")
+  text <- paste(readLines(path), collapse = "\n")
+
+  # Repository paths in backticks, e.g. `R/` or `docs/operations.md`.
+  paths <- regmatches(text, gregexpr("`[A-Za-z_.]+(/[A-Za-z_.-]*)*`", text))[[1]]
+  paths <- gsub("`", "", paths)
+  paths <- paths[grepl("/", paths) | grepl("\\.(md|yaml|R)$", paths)]
+  paths <- setdiff(paths, ".Renviron")
+  missing <- paths[!file.exists(file.path(root, paths))]
+  expect_equal(missing, character(0))
+
+  # Package functions in backticks, e.g. `upload_file()`.
+  funs <- unique(gsub("[`()]", "", regmatches(text, gregexpr("`[a-z_]+\\(\\)`", text))[[1]]))
+  exported <- getNamespaceExports("challengeci")
+  expect_equal(setdiff(funs, exported), character(0))
+})

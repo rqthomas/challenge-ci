@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: read real data, write nothing to S3 (output kept as an artifact)'
+        type: boolean
+        default: false
 
 name: bundling
 
@@ -12,6 +17,12 @@ name: bundling
 concurrency:
   group: bundling
   cancel-in-progress: false
+
+# A manual dry run writes nothing to S3, publishes nothing and pings no
+# healthcheck (docs/operations.md). Scheduled runs have no inputs: real runs.
+env:
+  DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+  DRY_RUN_DIR: dry-run
 
 jobs:
   config:
