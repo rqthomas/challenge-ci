@@ -37,8 +37,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Quarto comes with the image.
+      # Quarto comes with the image. The key is used only when the config sets
+      # `public_read: false`.
       - name: Build the dashboard
+        env:
+          OSN_KEY: ${{ secrets.OSN_KEY }}
+          OSN_SECRET: ${{ secrets.OSN_SECRET }}
         run: Rscript -e 'challengeci::run_stage()' dashboard site
 
       - name: Keep the built site

@@ -1,6 +1,57 @@
-<!-- Default upload instructions. Override with the challenge's own
+<!-- Default submission instructions. They follow the config: the GitHub method
+     when submissions$github$registry is set, the bucket unless
+     submissions$use_bucket is false. Override with the challenge's own
      _content/instructions-submit.qmd, e.g. to describe a helper function. -->
 
-Upload the file to the `` `r cfg$submissions_bucket` `` bucket at
-`` `r paste0("https://", cfg$submissions_endpoint)` `` with any S3 client.
-If you need upload access, email `r settings$contact_email`.
+```{r}
+#| include: false
+use_github <- !is.null(cfg$submissions$github$registry)
+use_bucket <- !isFALSE(cfg$submissions$use_bucket)
+example_theme <- themes[1]
+fence <- strrep("`", 3)
+register_step <- if (isTRUE(cfg$submissions$github$issue_registration)) {
+  paste0("[Register your repository](https://github.com/", cfg$github_repo,
+         "/issues/new?template=register-forecast-repo.yml) by opening an issue and giving its address. ",
+         "A bot checks it and replies on the issue.")
+} else {
+  paste0("Ask us to add your repository to the list we read: email ", settings$contact_email,
+         " with its address.")
+}
+results_url <- challengeci::bucket_uri(cfg, "forecasts_bucket", "submission_results",
+                                       "<model_id>.csv", scheme = "https")
+```
+
+```{r}
+#| output: asis
+#| echo: false
+if (use_github) {
+  cat('
+#### Submit from a GitHub repository
+
+Keep your forecasts in a **public** GitHub repository. Nothing needs to be uploaded: we read new files from the repository.
+
+1)  Put each forecast in a `forecasts/` folder, named `<theme>-<YYYY-MM-DD>-<model_id>.csv.gz`, for example `', example_theme, '-2026-01-01-my_model.csv.gz`.
+2)  Add a file named `challenge-model.yaml` at the top of the repository that says which models it submits for this challenge, and describes them (the questions of the [registration form](', settings$registration_form_url, ') are the other keys, answered the same way; leave out any you do not want to answer):
+
+', fence, 'yaml
+challenge: ', cfg$project_id, '
+models:
+  - model_id: my_model
+    path: forecasts/
+    long_name: My model
+    description: How my model works
+    model_type: process-based
+', fence, '
+
+3)  ', register_step, '
+
+Only the repository listed for a `model_id` can submit forecasts for it. A file is read the first time we see it, and later edits to it are ignored. We check each new file and publish the result, including the reason when a file is rejected, at `', results_url, '`.
+', sep = '')
+}
+if (use_bucket) {
+  cat(if (use_github) '\n#### Upload to the submissions bucket\n\n' else '',
+      'Upload the file to the `', cfg$submissions_bucket, '` bucket at `https://',
+      cfg$submissions_endpoint, '` with any S3 client. If you need upload access, email ',
+      settings$contact_email, '.\n', sep = '')
+}
+```

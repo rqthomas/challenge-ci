@@ -16,7 +16,8 @@ process_submission(path, cfg, out_dir, pub_datetime = Sys.time())
 \item{pub_datetime}{Publication time stamped on the forecast.}
 }
 \value{
-A list with \code{status} and \code{reason}. \code{status} is \code{"processed"}, or
+A list with \code{status} and \code{reason}, and \code{warnings} (the validation
+warnings, joined) when the file was read. \code{status} is \code{"processed"}, or
 \code{"invalid"} (failed validation) or \code{"skipped"} (a file name, type or date
 that is not processed). Errors are raised, not returned, so a failure can
 be retried on the next run.

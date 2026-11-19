@@ -49,7 +49,7 @@ run_catalog <- function(cfg, parts = default_catalog_parts(cfg), out_dir = catal
   if (length(model_kinds) > 0 || "metadata" %in% parts) registered <- read_registered_models(cfg)
   if (length(model_kinds) > 0) {
     variables <- catalog_variables(cfg)
-    duckdb_connect(cfg, "main", anonymous = TRUE)
+    duckdb_connect(cfg, "main", anonymous = anonymous_reads(cfg))
     inventory <- list(scores = catalog_inventory(cfg, "scores_bucket", "bundled-parquet"))
     if (any(c("forecasts", "summaries") %in% model_kinds)) {
       inventory$summaries <- catalog_inventory(cfg, "summaries_bucket", "bundled-summaries")
@@ -324,7 +324,7 @@ build_model_collection <- function(kind, cfg, inventory, sites, registered, vari
 
   data_path <- c(spec$bucket, spec$folder)
   if (is.null(schema)) {
-    bucket <- arrow_bucket(cfg, spec$bucket, spec$folder, anonymous = TRUE)
+    bucket <- arrow_bucket(cfg, spec$bucket, spec$folder, anonymous = anonymous_reads(cfg))
     schema <- arrow_schema(arrow::open_dataset(bucket)$schema)
   }
   ctx <- list(
@@ -495,6 +495,8 @@ model_item <- function(m, dates, var, group, partition, ctx) {
                             paste0("model_id=", m))
   s3_path <- sub("\\?.*$", "", sub("^s3://anonymous@", "s3://", data_uri))
   endpoint <- store_credentials(cfg, "main", anonymous = TRUE)$endpoint
+  region <- store_region(cfg, "main")
+  region_arg <- if (region == "us-east-1") "" else paste0(", REGION '", region, "'")
   producer <- if (identical(reg$public_contact, "Yes")) {
     list(url = code_url, name = reg$contact_name)
   } else {
@@ -579,7 +581,7 @@ model_item <- function(m, dates, var, group, partition, ctx) {
           "download speed and reduce your memory usage.\n\n### Python\n\n```{python}\n",
           "# Use code below\nimport ibis\ncon = ibis.duckdb.connect()\n",
           "con.raw_sql(\"CREATE OR REPLACE SECRET secret (TYPE S3, ENDPOINT '", endpoint,
-          "', URL_STYLE 'path')\")\n",
+          "', URL_STYLE 'path'", region_arg, ")\")\n",
           "df = con.read_parquet(\"", s3_path, "/**\")\n```"
         )
       )

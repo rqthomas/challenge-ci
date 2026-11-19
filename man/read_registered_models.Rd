@@ -4,21 +4,27 @@
 \alias{read_registered_models}
 \title{Models registered for this challenge}
 \usage{
-read_registered_models(cfg, sheet = NULL)
+read_registered_models(cfg, sheet = NULL, github = NULL)
 }
 \arguments{
 \item{cfg}{Configuration from \code{\link[=read_config]{read_config()}}.}
 
 \item{sheet}{The registration sheet, if already read. \code{NULL} reads it.}
+
+\item{github}{The GitHub models from \code{\link[=read_github_models]{read_github_models()}}, if already
+read. \code{NULL} reads them (only when the challenge reads GitHub).}
 }
 \value{
 A tibble with the short column names of \code{\link[=registration_columns]{registration_columns()}}.
 Questions missing from the sheet are \code{NA} columns.
 }
 \description{
-Reads the registration sheet (\code{model_metadata_gsheet}), keeps this
-challenge's rows, drops example models (ids containing \code{example_model_id},
-default \code{"example"}) and keeps one row per model: the most complete one,
-and the earliest of those if several are equally complete (later rows with
-the same id are usually accidental re-registrations).
+Two sources are combined. The registration sheet
+(\code{model_metadata_gsheet}, see \code{\link[=read_sheet_models]{read_sheet_models()}}) lists the models
+registered through the form. When the challenge reads GitHub repositories
+(\code{submissions$github$registry}), each repository's \code{challenge-model.yaml}
+describes the models it submits (see \code{\link[=read_github_models]{read_github_models()}}). A model in
+both takes its answers from the file, field by field, falling back to the
+sheet for a question the file leaves out; a model only in the file is
+registered by it, so GitHub participants need not fill in the form.
 }

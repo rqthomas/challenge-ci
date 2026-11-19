@@ -77,3 +77,73 @@ test_that("targets_files() reads an earlier dry run's targets in a dry run", {
   expect_message(files <- targets_files(cfg), "DRY RUN")
   expect_equal(files, local)
 })
+
+private_cfg <- function() {
+  cfg <- test_config()
+  cfg$public_read <- FALSE
+  cfg$target_groups$Lakes$targets_file <- "https://s3.example.org/test-bucket/lakes-targets.csv.gz"
+  cfg
+}
+
+test_that("reads are anonymous unless public_read is false", {
+  expect_true(anonymous_reads(test_config()))
+  expect_true(anonymous_reads(list(public_read = TRUE)))
+  expect_false(anonymous_reads(list(public_read = FALSE)))
+  expect_error(validate_config(utils::modifyList(test_config(), list(public_read = "no"))),
+               "public_read")
+})
+
+test_that("a public store's targets are read by URL, a private store's are downloaded", {
+  cfg <- test_config()
+  cfg$target_groups$Lakes$targets_file <- "https://s3.example.org/test-bucket/lakes-targets.csv.gz"
+  url <- "https://s3.example.org/test-bucket/lakes-targets.csv.gz"
+  expect_equal(targets_files(cfg, url), url)
+
+  downloaded <- NULL
+  testthat::local_mocked_bindings(download_targets = function(cfg, object) {
+    downloaded <<- object
+    "/tmp/local-targets.csv.gz"
+  })
+  expect_equal(targets_files(private_cfg(), url), "/tmp/local-targets.csv.gz")
+  expect_equal(downloaded, "main/test-bucket/lakes-targets.csv.gz")
+  # A file outside the store is read as it is.
+  expect_equal(targets_files(private_cfg(), "elsewhere/targets.csv"), "elsewhere/targets.csv")
+})
+
+test_that("download_targets() copies the object to a local file", {
+  copied <- NULL
+  testthat::local_mocked_bindings(mc_connect = function(...) invisible(NULL))
+  testthat::local_mocked_bindings(
+    mc_cp = function(from, to) copied <<- list(from, to),
+    .package = "minioclient"
+  )
+  path <- download_targets(private_cfg(), "main/test-bucket/lakes-targets.csv.gz")
+  expect_equal(basename(path), "lakes-targets.csv.gz")
+  expect_equal(copied[[1]], "main/test-bucket/lakes-targets.csv.gz")
+  expect_equal(copied[[2]], shQuote(path))
+})
+
+test_that("the published targets of a private store are downloaded, not fetched by URL", {
+  local <- withr::local_tempfile(fileext = ".csv")
+  readr::write_csv(tibble::tibble(site_id = "A", observation = 1), local)
+  seen <- NULL
+  testthat::local_mocked_bindings(
+    mc_connect = function(cfg, store, alias = store, anonymous = FALSE) {
+      seen <<- list(alias = alias, anonymous = anonymous)
+    },
+    download_targets = function(cfg, object) local
+  )
+  testthat::local_mocked_bindings(mc_ls = function(...) "file", .package = "minioclient")
+  published <- read_published_targets(private_cfg(), "Lakes")
+  expect_equal(published$site_id, "A")
+  # The alias is connected with the key.
+  expect_false(seen$anonymous)
+})
+
+test_that("a store without a key is read anonymously only when it is public", {
+  withr::local_envvar(OSN_KEY = "", OSN_SECRET = "")
+  expect_true(read_anonymously_without_key(test_config()))
+  expect_false(read_anonymously_without_key(private_cfg()))
+  withr::local_envvar(OSN_KEY = "k", OSN_SECRET = "s")
+  expect_false(read_anonymously_without_key(test_config()))
+})

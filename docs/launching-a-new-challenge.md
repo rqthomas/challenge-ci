@@ -51,10 +51,10 @@ describes every key. The keys that make up a challenge:
 | Section | Set |
 |---|---|
 | Identity | `project_id` (short, used in every path and row), `challenge_long_name`, `github_repo` (this repository), `challenge_url` (where the dashboard is published) |
-| Storage | `endpoint` and the `*_bucket` keys for the main store; `submissions_endpoint` and `submissions_bucket`; `scratch` for scoring; `credentials` if your secrets have other names |
+| Storage | `endpoint` and the `*_bucket` keys for the main store; `submissions_endpoint` and `submissions_bucket` (only if you accept uploads to a bucket); `scratch` for scoring; `credentials` if your secrets have other names |
 | Sites | `sites$metadata_url`, `sites$columns` |
 | Target groups | for each group: `variable`, `duration`, `max_horizon` (days), `targets_file`, `targets_script`, `theme` (file-name prefix participants use), `focal_sites`, `baselines`, and the catalog's `thumbnail_link`/`thumbnail_title` and `group_vars` citations |
-| Submissions | `submissions$min_reference_date`, `submissions$exclude_patterns`; `submissions$known_themes_only: true` if the submissions bucket is shared with another challenge |
+| Submissions | `submissions$github$registry` (read forecasts from contributors' GitHub repositories, see [operations.md](operations.md#submissions-from-github-repositories)), `submissions$use_bucket: false` (GitHub only), `submissions$baselines_destination: forecasts_bucket` (baselines need no submissions key), `submissions$min_reference_date`, `submissions$exclude_patterns`; `submissions$known_themes_only: true` if the submissions bucket is shared with another challenge |
 | Drivers | `noaa_forecast_bucket`, `noaa_endpoint`, `noaa_forecasts` (only if you provide NOAA weather forecasts) |
 | Metadata | `model_metadata_gsheet`, `target_metadata_gsheet` (step 6) |
 | Dashboard | `dashboard` block: title, contact email, registration form, excluded models, extra pages |
@@ -72,8 +72,19 @@ Rscript -e 'challengeci::run_stage()' check
 Create the buckets named in the config. The main store's forecasts, scores,
 summaries, targets and metadata buckets must allow **anonymous read**: the
 dashboard, catalog and participants read them without credentials. The
-submissions bucket must let participants upload. The scratch bucket is private
+submissions bucket (if you use one) must let participants upload. The scratch bucket is private
 and holds temporary files while scoring.
+
+**Backblaze B2.** The S3 API works with the engine: use the endpoint
+`s3.<region>.backblazeb2.com` (the region is read from it), name the bucket
+in the `*_bucket` settings, and make it public for downloads. B2 does not, as far
+as we know, answer anonymous *list* requests, so either set `public_read: false`
+(the engine then reads with the key; participants cannot read the folders
+anonymously) or check
+`curl 'https://s3.<region>.backblazeb2.com/<bucket>/?list-type=2&max-keys=1'`
+before choosing it for a public challenge: reads that open a folder of parquet
+files without credentials (the engine's anonymous reads, the catalog's access
+code for participants) need listing.
 
 ## 5. Add the secrets
 

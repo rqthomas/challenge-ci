@@ -55,9 +55,17 @@ read_config <- function(path = config_path(), validate = TRUE) {
 #' These apply only where `challenge_configuration.yaml` leaves a setting out.
 #' Values in the file always win.
 #'
+#' * `public_read`: the main store's buckets can be read without a key, as the
+#'   engine's reads of them assume. `false` makes every read use the key.
 #' * `credentials`: for each store, the *names* of the environment variables
 #'   holding its access key and secret. These are the GitHub secret names the
 #'   workflows already use. The secrets themselves never go in the config.
+#' * `submissions`: the bucket is read (`use_bucket`), baseline forecasts go
+#'   through it (`baselines_destination`), published results keep
+#'   200 rows per model, and GitHub repositories are read with files up to
+#'   100 MB, at most 100 new files per repository per run, and registered by
+#'   hand unless `issue_registration` is on. The GitHub source
+#'   itself is off until `submissions$github$registry` is set.
 #' * `sites$columns`: how columns in the site metadata file map to the
 #'   standard names used by [read_sites()]. The names are standard, the values
 #'   are the file's columns. The defaults match the NEON site metadata file.
@@ -66,11 +74,19 @@ read_config <- function(path = config_path(), validate = TRUE) {
 #' @export
 config_defaults <- function() {
   list(
+    public_read = TRUE,
     credentials = list(
       main = list(key_env = "OSN_KEY", secret_env = "OSN_SECRET"),
       submissions = list(key_env = "AWS_ACCESS_KEY_SUBMISSIONS",
                          secret_env = "AWS_SECRET_ACCESS_KEY_SUBMISSIONS"),
       scratch = list(key_env = "EFI_NRP_KEY", secret_env = "EFI_NRP_SECRET")
+    ),
+    submissions = list(
+      use_bucket = TRUE,
+      baselines_destination = "submissions_bucket",
+      results_max_rows = 200,
+      github = list(max_file_mb = 100, max_files_per_repo = 100,
+                    issue_registration = FALSE)
     ),
     sites = list(
       columns = list(site_id = "field_site_id",
@@ -217,6 +233,14 @@ config_problems <- function(cfg) {
     if (!rlang::is_string(cfg[[key]]) || !nzchar(cfg[[key]])) {
       add("error", key, "required, and must be a single string")
     }
+  }
+  if (!is.null(cfg$public_read) && !rlang::is_bool(cfg$public_read)) {
+    add("error", "public_read", "must be true or false")
+  }
+  destination <- cfg$submissions$baselines_destination
+  if (!is.null(destination) && !destination %in% baseline_destinations) {
+    add("error", "submissions$baselines_destination",
+        paste0("must be one of ", paste(baseline_destinations, collapse = ", ")))
   }
   site_url <- cfg$sites$metadata_url %||% cfg$catalog_config$site_metadata_url
   if (!rlang::is_string(site_url)) {

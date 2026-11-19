@@ -29,6 +29,7 @@ challenge sets its own. "Large" means the self-hosted runner named by
 | Trigger (reusable workflow) | Schedule | Runner | Runs | Healthcheck |
 |---|---|---|---|---|
 | `submissions.yaml` (`_submissions.yaml`) | every 2 h | GitHub | `run_stage() submissions` | `submissions` |
+| `register.yaml` (`_register.yaml`) | when a registration issue is opened or edited | GitHub | `run_stage() register` | |
 | `bundling.yaml` (`_bundling.yaml`) | every 6 h | GitHub | `run_stage() bundle forecasts`, `... summaries` | `bundling` |
 | `scoring.yaml` (`_scoring.yaml`) | 10:00 | large | `run_stage() score [since]` | `scoring` |
 | `targets.yaml` (`_targets.yaml`) | 07:00 | GitHub, or large for groups with `targets_large_runner` | each group's `targets_script` | `targets-<group>`, then `targets` when all succeed |
@@ -159,3 +160,136 @@ fail, so processing also keeps its own record of every submission handled
 (`processed_submissions`, on the main store) and skips those files. The two
 minio client aliases are at the top of the engine's `R/submissions.R`; once
 NRP restores the key's permissions, drop the anonymous one there.
+
+## Submissions from GitHub repositories
+
+Optional, and used together with the submissions bucket: the `submissions`
+stage reads both and keeps one processed-submissions record. It is on when the
+config sets `submissions$github$registry`; set `submissions$use_bucket: false`
+to read only GitHub. Nothing is needed from contributors but a public
+repository: the CI never holds a credential for them, and a model id can only
+be submitted from the repository registered for it.
+
+**What a contributor does**
+
+1. Keep forecasts in a public repository, in a folder such as `forecasts/`,
+   named `<theme>-<YYYY-MM-DD>-<model_id>.csv` (or `.csv.gz`) as for the bucket.
+2. Add `challenge-model.yaml` at the repository root. It names the challenge and
+   its models, and carries the model metadata that the registration form asks
+   for:
+
+   ```yaml
+   challenge: neon4cast            # the challenge's project_id
+   models:
+     - model_id: my_model
+       path: forecasts/            # optional, this is the default
+       long_name: My lake model
+       description: A process model of lake temperature
+       code_url: https://github.com/alice/forecasts
+       model_type: process-based
+       dynamic: true
+       ic_uncertainty: true
+   ```
+
+   The keys after `path` are the questions of the registration form, by the
+   short names listed in `?challengeci::registration_columns`, answered as in
+   the form (`true` and `false`, or `yes` and `no`, mean the form's "Yes" and
+   "No"). Leave a question out to leave it unanswered. A repository for several
+   challenges lists one block per challenge, as a YAML list.
+3. Register the repository, by either route:
+   - **an issue** (optional, set up below): open the challenge repository's
+     "Register a forecast repository" form and give the repository's address. A
+     bot checks it, adds it to the registry, replies and closes the issue;
+   - **by hand**: ask the operator to add a row to the registry.
+
+**Model metadata.** `challenge-model.yaml` is also where the model metadata
+comes from: the `catalog` stage's model metadata records are built from the
+registration form's rows *and* the files in the registered repositories. For a
+model in both, the file's answers win and the form fills any question the file
+leaves out; a model only in a file needs no form, so the registration sheet
+(`model_metadata_gsheet`) may be left out of the config altogether. Edits to the
+file reach the catalog at its next run.
+
+**A model id belongs to one repository.** If two registered repositories list the
+same `model_id`, the first one in the registry keeps it (for submissions and for
+metadata) and the other is told so in its published results.
+
+**Registering by issue (optional).** Copy
+`inst/issue_forms/register-forecast-repo.yml` to `.github/ISSUE_TEMPLATE/` and
+`inst/workflows/register.yaml` to `.github/workflows/` in the challenge
+repository. The workflow runs when an issue with the `register-repo` label (the
+form adds it) is opened or edited, and uses only the Actions token (it needs
+`contents: write` and `issues: write`, which the trigger file grants). It
+registers the repository when
+- it is public and has a valid `challenge-model.yaml` for this challenge, and
+- none of its model ids belong to a repository already in the registry.
+
+Then it commits a row to the registry, replies on the issue and closes it. A
+model id that already has a registration through the form is not taken over
+automatically: the issue gets the `needs-review` label and stays open until a
+maintainer has checked that the repository belongs to the model's owner and
+added the row. Any other problem is explained on the issue (label
+`registration-failed`); the contributor edits the issue to try again. The registry
+must be a file in the challenge repository (not a URL) for this to work. The
+issue text is untrusted: it supplies only a repository name, matched against a
+strict pattern, and everything else is read from the repository.
+
+**What the operator does**
+
+- To register by hand, add a row to the registry CSV named by
+  `submissions$github$registry` (`repo,repo_id,registered`). Put the repository's
+  numeric id in `repo_id` when it is known
+  (`gh api repos/<owner>/<name> --jq .id`): a repository that is renamed or
+  transferred keeps the same id, and one that is deleted and recreated under the old
+  name does not, so it stops being read until the registry is updated. For a model
+  that already submits through the bucket, check the repository really belongs to
+  that model's owner before listing it: the bucket accepts any `model_id`, so
+  nothing else says who owns an id.
+- Give the jobs a GitHub token: the workflows already pass the Actions token as
+  `GITHUB_PAT`. Without one, the API allows only 60 requests an hour.
+- Remove a repository by deleting its row. A contributor can also stop at any
+  time by removing `challenge-model.yaml` or making the repository private.
+
+**How files are found.** Each run lists every registered repository's default
+branch and compares each file's path with the processed-submissions record (key
+`github/<repo id>/<path>`). File dates are never used. The first version of a
+path wins: editing a file after it was processed has no effect, as for a bucket
+key. A file's publication time is when the CI first processed it, not its commit
+time. Only `.csv` and `.csv.gz` files in a registered folder are read, up to
+`submissions$github$max_file_mb`, and a repository's other files are ignored.
+
+**What submitters see.** `<forecasts_bucket>/submission_results/<model_id>.csv`
+lists what happened to each file (`processed`, `invalid` with the reason,
+`skipped`, ...), for the bucket and GitHub alike (see
+`?challengeci::write_submission_results`). A repository whose
+`challenge-model.yaml` is missing or invalid is reported in
+`github_<repo id>.csv` until it is fixed.
+
+## A private bucket
+
+By default the engine assumes the main store is public: its stages read the
+forecasts, scores and targets anonymously, and the catalog and dashboard link to
+them. To keep the bucket private, set `public_read: false` in the config. Then:
+
+- every read of the main store (bundling, scoring, the catalog, the dashboard,
+  baselines and the targets check) uses the key named in `credentials`, and
+  targets files are downloaded with it instead of fetched by URL. The workflows
+  already pass the key to every job that needs it, including the dashboard;
+- a dry run needs the key too, since nothing can be read without it
+  (`OSN_KEY` and `OSN_SECRET` in `.Renviron` or the environment);
+- the NOAA driver store is unaffected (it is read as before).
+
+What a private bucket cannot do is serve participants. These parts of the
+engine's output assume the data can be read by anyone, and will not work for
+people without a key:
+
+- the catalog's access code (`arrow::open_dataset()` and the Python snippet on
+  each model's page) and its links to the data, the metadata JSON and the targets;
+- the dashboard's and the "How to forecast" page's links to the targets files;
+- the published `submission_results/` files.
+
+Participants of a private challenge need another way to get the targets (a public
+copy of just that file, or a read-only key) and to see their results.
+`public_read: false` is a good fit for a store that does not answer anonymous
+*list* requests, such as Backblaze B2, where the engine's own reads must use the
+key even though the bucket is public.

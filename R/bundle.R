@@ -122,7 +122,7 @@ bundle_model <- function(files, cfg, kind = "forecasts", alias = "main") {
   }
 
   conn <- local_duckdb()
-  duckdb_connect(cfg, "main", anonymous = is_dry_run() && !has_credentials(cfg, "main"),
+  duckdb_connect(cfg, "main", anonymous = is_dry_run() && read_anonymously_without_key(cfg),
                  conn = conn)
 
   out_file <- tempfile(fileext = ".parquet")
@@ -157,11 +157,11 @@ run_bundling <- function(cfg, kind = c("forecasts", "summaries")) {
   kind <- rlang::arg_match(kind)
   layout <- bundle_layout(kind)
   log_step("Bundling {kind}")
-  mc_connect(cfg, "main", anonymous = is_dry_run() && !has_credentials(cfg, "main"))
+  mc_connect(cfg, "main", anonymous = is_dry_run() && read_anonymously_without_key(cfg))
 
   count_bundled <- function() {
     if (!is_verbose()) return(invisible())
-    duckdb_connect(cfg, "main", anonymous = TRUE)
+    duckdb_connect(cfg, "main", anonymous = anonymous_reads(cfg))
     n <- duckdbfs::open_dataset(bucket_uri(cfg, layout$bucket, layout$bundled, "**")) |>
       dplyr::count() |>
       dplyr::pull(.data$n)

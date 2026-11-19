@@ -10,25 +10,37 @@ run_submissions(cfg)
 \item{cfg}{Configuration from \code{\link[=read_config]{read_config()}}.}
 }
 \value{
-A tibble with one row per downloaded submission: \code{key}, \code{status}
-(\code{"processed"}, \code{"invalid"}, \code{"skipped"} or \code{"failed"}) and \code{reason},
+A tibble with one row per file looked at: \code{key}, \code{status}
+(\code{"processed"}, \code{"invalid"}, \code{"skipped"}, \code{"unreadable"} or \code{"failed"})
+and \code{reason}, with the columns described in \code{\link[=write_submission_results]{write_submission_results()}},
 invisibly.
 }
 \description{
-The \code{process_submissions} stage. For each new file in the submissions
-bucket:
+The \code{submissions} stage. New files come from up to two sources, used
+together:
 }
 \details{
+\itemize{
+\item the submissions bucket (unless \code{submissions$use_bucket} is \code{false});
+\item the contributors' GitHub repositories listed in the registry named by
+\code{submissions$github$registry}, when that is set (see
+\code{\link[=list_github_submissions]{list_github_submissions()}}).
+}
+
+For each new file:
 \enumerate{
 \item download it (a file that cannot be read is skipped and retried next run);
 \item \code{\link[=process_submission]{process_submission()}} it, and upload any parquet and summaries to the
 forecasts and summaries buckets;
 \item archive the raw file in \verb{<forecasts_bucket>/raw/}, valid or not;
-\item add it to the processed-submissions record, then delete it from the
-submissions bucket (best effort).
+\item add it to the processed-submissions record and, for the bucket, delete it
+there (best effort).
 }
 
+Afterwards what happened to each file is published for its submitter, see
+\code{\link[=write_submission_results]{write_submission_results()}}.
+
 A submission that errors is logged and left out of the record, so it is
-retried on the next run. The run carries on with the others and fails at the
-end if any errored.
+retried on the next run. The run carries on with the others, and with the
+other source if one fails, and fails at the end if anything errored.
 }

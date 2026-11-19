@@ -94,3 +94,22 @@ test_that("open_dataset_if_any() returns NULL for a dataset with no files", {
   arrow::write_parquet(data.frame(x = 1:3), file.path(dir, "a.parquet"))
   expect_equal(nrow(dplyr::collect(open_dataset_if_any(file.path(dir, "**"), conn = conn))), 3)
 })
+
+test_that("store_region() reads Backblaze endpoints, else the config, else us-east-1", {
+  b2 <- list(endpoint = "s3.us-east-005.backblazeb2.com")
+  expect_equal(store_region(b2), "us-east-005")
+  expect_equal(store_region(list(endpoint = "sdsc.osn.xsede.org")), "us-east-1")
+  expect_equal(store_region(list(endpoint = "sdsc.osn.xsede.org", region = "eu-west-1")),
+               "eu-west-1")
+  expect_equal(store_region(utils::modifyList(b2, list(region = "x"))), "x")
+})
+
+test_that("public URIs name the region only when it is not the default", {
+  cfg <- list(endpoint = "sdsc.osn.xsede.org", forecasts_bucket = "b/forecasts")
+  expect_equal(public_s3_uri(cfg, "forecasts_bucket"),
+               "s3://anonymous@b/forecasts?endpoint_override=sdsc.osn.xsede.org")
+  cfg <- list(endpoint = "s3.us-east-005.backblazeb2.com", forecasts_bucket = "b/forecasts")
+  expect_equal(public_s3_uri(cfg, "forecasts_bucket"),
+               paste0("s3://anonymous@b/forecasts?endpoint_override=",
+                      "s3.us-east-005.backblazeb2.com&region=us-east-005"))
+})

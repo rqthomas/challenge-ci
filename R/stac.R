@@ -160,7 +160,10 @@ public_s3_uri <- function(cfg, key, ...) {
   store <- bucket_key_store(key)
   endpoint <- store_credentials(cfg, store, anonymous = TRUE)$endpoint
   path <- sub("^s3://", "", bucket_uri(cfg, key, ..., scheme = "s3"))
-  paste0("s3://anonymous@", path, "?endpoint_override=", endpoint)
+  region <- store_region(cfg, store)
+  # The region is only spelled out where it is not the default.
+  region_arg <- if (region == "us-east-1") "" else paste0("&region=", region)
+  paste0("s3://anonymous@", path, "?endpoint_override=", endpoint, region_arg)
 }
 
 # Asset pointing at parquet data, with R code to read it. `filter` is an

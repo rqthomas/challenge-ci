@@ -19,6 +19,7 @@
 #' | `drivers-stage3` | optional `rebuild` | [download_gefs()], [update_stage3()] |
 #' | `catalog` | optional catalog parts | [run_catalog()] |
 #' | `dashboard` | optional output folder (default `dashboard/docs`) | [render_dashboard()] |
+#' | `register` | | [run_registration()], for the issue in `ISSUE_BODY` and `ISSUE_NUMBER` |
 #' | `check` | | [check_challenge_repo()] |
 #'
 #' Environment variables: `CHALLENGE_CONFIG` (config file), `DRY_RUN` and
@@ -70,6 +71,11 @@ stage_runners <- list(
     minioclient::install_mc()
     run_submissions(read_config())
   },
+  register = function(args) {
+    cfg <- read_config()
+    run_registration(cfg, body = Sys.getenv("ISSUE_BODY"),
+                     number = Sys.getenv("ISSUE_NUMBER"))
+  },
   bundle = function(args) {
     minioclient::install_mc()
     cfg <- read_config()
@@ -109,6 +115,8 @@ stage_runners <- list(
   },
   dashboard = function(args) {
     cfg <- read_config()
+    # A private store's targets are downloaded with mc (see targets_files()).
+    if (!anonymous_reads(cfg)) minioclient::install_mc()
     if (length(args) == 0) render_dashboard(cfg) else render_dashboard(cfg, out_dir = args[1])
   },
   check = function(args) {

@@ -61,8 +61,9 @@ prepare_scoring <- function(cfg, since = Sys.Date() - lubridate::dmonths(6),
     clear_scratch(cfg, folder)
   }
 
-  # Forecasts and scores are public; scratch needs its own credentials.
-  duckdb_connect(cfg, "main", anonymous = TRUE, conn = conn)
+  # Forecasts and scores are public unless `public_read` is false; scratch
+  # needs its own credentials.
+  duckdb_connect(cfg, "main", anonymous = anonymous_reads(cfg), conn = conn)
   if (!is_dry_run()) duckdb_connect(cfg, "scratch", conn = conn)
   project <- cfg$project_id
 
@@ -218,7 +219,7 @@ score_group <- function(group, cfg) {
                  paste0("variable=", group$variable),
                  paste0("model_id=", group$model_id))
   existing <- remote_files(bucket_uri(cfg, "scores_bucket", partition, scheme = "mc"))
-  duckdb_connect(cfg, "main", anonymous = !has_credentials(cfg, "main"), conn = conn)
+  duckdb_connect(cfg, "main", anonymous = read_anonymously_without_key(cfg), conn = conn)
   merged <- merge_scores(
     new_scores,
     if (nrow(existing) > 0) bucket_uri(cfg, "scores_bucket", partition) else NULL,
@@ -245,7 +246,7 @@ score_group <- function(group, cfg) {
 #' @export
 run_scoring <- function(cfg, since = Sys.Date() - lubridate::dmonths(6)) {
   log_step("Scoring")
-  mc_connect(cfg, "main", anonymous = !has_credentials(cfg, "main"))
+  mc_connect(cfg, "main", anonymous = read_anonymously_without_key(cfg))
   groups <- prepare_scoring(cfg, since = since)
   log_step("{nrow(groups)} group{?s} to score")
 

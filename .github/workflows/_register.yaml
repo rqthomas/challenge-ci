@@ -1,0 +1,48 @@
+# Register a contributor's GitHub repository from an issue.
+#
+# Reusable: a challenge repository calls it from a short trigger workflow that
+# runs on opened and edited issues carrying the `register-repo` label (see
+# inst/workflows/register.yaml in the engine). The caller must grant
+# `contents: write` (to add a row to the registry file) and `issues: write` (to
+# reply, label and close). No secrets are used: only the Actions token.
+#
+# The issue text is untrusted. It reaches the job as an environment variable,
+# never inside a script, and the R code only takes a repository name from it
+# after matching a strict pattern.
+name: register-forecast-repo
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: Check the repository but commit nothing and do not reply on the issue.
+        type: boolean
+        default: false
+
+env:
+  DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+
+jobs:
+  config:
+    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+
+  register:
+    needs: config
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      issues: write
+    container:
+      image: ${{ needs.config.outputs.image }}
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE_BODY: ${{ github.event.issue.body }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: eco4cast/challenge-ci/.github/actions/setup-challenge@main
+
+      - name: Register the repository
+        run: Rscript -e 'challengeci::run_stage()' register

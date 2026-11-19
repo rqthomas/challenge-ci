@@ -34,7 +34,7 @@ release), checks out the challenge repository and runs one command:
 Rscript -e 'challengeci::run_stage()' <stage> [arguments]
 ```
 
-`?run_stage` lists the stages: `submissions`, `bundle`, `score`, `baselines`,
+`?run_stage` lists the stages: `submissions`, `register`, `bundle`, `score`, `baselines`,
 `drivers-stage1-2`, `drivers-stage3`, `catalog`, `dashboard` and `check`.
 Targets are the exception: the challenge's own `targets_script`s run directly
 and end with `format_targets() |> check_targets() |> write_targets()`.
@@ -145,8 +145,8 @@ challenges to change is a major release, and its section says what to change.
 - `DRY_RUN=true` sends all package writes to `DRY_RUN_DIR` (default: a
   temporary folder) and only logs moves and deletes. Reads still use the real
   buckets, anonymously if no credentials are set, so most stages can be
-  dry-run with no secrets at all. Submissions need the submissions key,
-  because only it can list that bucket.
+  dry-run with no secrets at all. Only reading the submissions bucket needs
+  its key, because only that key can list it.
 - In a dry run, stages that read targets read a group's file from
   `DRY_RUN_DIR` when an earlier dry run wrote it there (`targets_files()`),
   so a pipeline can be dry-run before any targets are published.

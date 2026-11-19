@@ -8,6 +8,46 @@ Minor releases only add: new config keys are optional with defaults. A release
 that needs challenges to change anything is a major release, and its section
 says exactly what to change.
 
+## Unreleased
+
+Minor release; every new key is optional and the defaults keep today's
+behaviour.
+
+- Submissions can also be read from contributors' public GitHub repositories,
+  alongside the submissions bucket: `submissions$github$registry` turns it on,
+  and contributors describe their models in `challenge-model.yaml`. See
+  "Submissions from GitHub repositories" in `docs/operations.md`.
+- The `submissions` stage publishes what happened to each file, for the bucket
+  and GitHub, to `<forecasts_bucket>/submission_results/<model_id>.csv`. This
+  adds files to the forecasts bucket.
+- `submissions$baselines_destination: forecasts_bucket` makes the baselines
+  write straight to the forecasts bucket instead of the submissions bucket
+  (default `submissions_bucket`). The baselines workflow now passes the main
+  store's key to the job.
+- Model metadata can come from `challenge-model.yaml`: `read_registered_models()`
+  combines the registration sheet with the files in the registered repositories
+  (the file wins per answer), so the `catalog` stage builds model records for
+  GitHub models, and `model_metadata_gsheet` may be left out of a GitHub-only
+  challenge. A model id belongs to the first repository in the registry that
+  lists it.
+- Optional registration by GitHub issue: the `register` stage, the
+  `_register.yaml` workflow, a trigger (`inst/workflows/register.yaml`) and an
+  issue form (`inst/issue_forms/register-forecast-repo.yml`). A bot checks the
+  repository, commits its row to the registry file and answers on the issue.
+- `public_read: false` keeps the main store private: every read the engine does
+  (bundling, scoring, catalog, dashboard, baselines, the targets check) uses the
+  key, and targets files are downloaded with it instead of fetched by URL. The
+  dashboard workflow now receives the key (used only in this mode). The default
+  `true` changes nothing. See "A private bucket" in `docs/operations.md`.
+- S3 requests are signed for a region: the config's new optional `region`, or for
+  a Backblaze B2 endpoint (`s3.<region>.backblazeb2.com`) the region in the
+  endpoint, else `us-east-1` as before. The catalog's participant access code
+  names the region when it is not the default.
+- `submissions$use_bucket: false` stops reading the bucket (default `true`).
+- A file that fails to be recorded no longer counts as recorded for the rest of
+  the run.
+- New package dependency: httr2, now installed explicitly in the base image.
+
 ## v0.1.0
 
 First release, from the generalized neon4cast-ci (branch `generalize-ci`):

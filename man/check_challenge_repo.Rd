@@ -21,8 +21,9 @@ problem (none when the repository is consistent).
 \description{
 Runs \code{\link[=config_problems]{config_problems()}} on the repository's config and checks that every
 local file the config names exists: each group's \code{targets_script},
-\code{catalog_config$site_columns_file}, and the site metadata when it is a local
-path rather than a URL.
+\code{catalog_config$site_columns_file}, the GitHub registry
+(\code{submissions$github$registry}) when it is a local path, and the site
+metadata when it is a local path rather than a URL.
 }
 \examples{
 \dontrun{

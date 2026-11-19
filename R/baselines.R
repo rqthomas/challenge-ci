@@ -15,8 +15,11 @@
 #
 # Every method takes targets, a reference date and a horizon, and returns rows
 # of site_id, variable, datetime, family, parameter and prediction.
-# run_baselines() adds the remaining standard columns and submits the forecast
-# through the submissions bucket, exactly as a participant would.
+# run_baselines() adds the remaining standard columns and submits the forecast.
+# By default it goes through the submissions bucket, exactly as a participant's
+# would. With `submissions$baselines_destination: forecasts_bucket` it is
+# processed on the spot and written straight to the forecasts bucket instead,
+# so the baselines need no submissions-bucket key.
 
 #' Reference date for a forecast made today
 #'
@@ -315,17 +318,29 @@ run_baseline <- function(baseline, targets, vars, cfg, today = Sys.Date()) {
     )
 }
 
-#' Submit a forecast the way a participant would
+#' Submit a forecast
 #'
-#' Checks the forecast with [validate_forecast()], writes it as
-#' `<theme>-<reference date>-<model_id>.csv.gz` and uploads it to the
-#' submissions bucket, where the submissions stage processes it like any other.
+#' Checks the forecast with [validate_forecast()] and writes it as
+#' `<theme>-<reference date>-<model_id>.csv.gz`. Where it goes depends on
+#' `submissions$baselines_destination` in the config:
+#'
+#' * `submissions_bucket` (the default): uploaded to the submissions bucket,
+#'   where the submissions stage processes it like any other submission.
+#' * `forecasts_bucket`: processed here and written straight to the forecasts
+#'   bucket (parquet, summaries and the raw copy in `raw/`, exactly as the
+#'   submissions stage would), and recorded in
+#'   `submission_results/<model_id>.csv` with source `baseline`. A forecast
+#'   already written for that model and reference date is not written again,
+#'   as the submissions stage ignores a file name it has seen: an empty marker
+#'   in `<forecasts_bucket>/baseline_records/` says so. Delete the marker to
+#'   write it again.
+#'
 #' In a dry run the file goes to [dry_run_dir()] instead.
 #'
 #' @param forecast Forecast in the standard format.
 #' @inheritParams config_get
 #' @param theme File name prefix.
-#' @return The uploaded file's name, invisibly.
+#' @return The file's name, invisibly.
 #' @export
 submit_forecast <- function(forecast, cfg, theme) {
   problems <- validate_forecast(forecast, cfg)
@@ -337,10 +352,61 @@ submit_forecast <- function(forecast, cfg, theme) {
                                       "-", forecast$model_id[1], ".csv.gz"))
   on.exit(unlink(file))
   readr::write_csv(forecast, file)
-  if (!is_dry_run()) mc_connect(cfg, "submissions", alias = submissions_alias)
-  upload_file(file, paste0(submissions_alias, "/", config_get(cfg, "submissions_bucket"),
-                           "/", basename(file)))
+
+  if (baselines_destination(cfg) == "forecasts_bucket") {
+    write_baseline(cfg, file)
+  } else {
+    if (!is_dry_run()) mc_connect(cfg, "submissions", alias = submissions_alias)
+    upload_file(file, paste0(submissions_alias, "/", config_get(cfg, "submissions_bucket"),
+                             "/", basename(file)))
+  }
   invisible(basename(file))
+}
+
+baseline_destinations <- c("submissions_bucket", "forecasts_bucket")
+
+baselines_destination <- function(cfg) {
+  config_get(cfg, "submissions", "baselines_destination", default = "submissions_bucket")
+}
+
+# Where the marker for a written baseline file is kept.
+baseline_marker <- function(cfg, file) {
+  bucket_uri(cfg, "forecasts_bucket", "baseline_records", paste0(basename(file), ".done"),
+             scheme = "mc")
+}
+
+baseline_written <- function(marker) {
+  length(minioclient::mc_ls(marker)) > 0
+}
+
+# Process a baseline file and write it to the forecasts bucket, unless it was
+# written already.
+write_baseline <- function(cfg, file) {
+  mc_connect(cfg, "main", anonymous = is_dry_run() && read_anonymously_without_key(cfg))
+  marker <- baseline_marker(cfg, file)
+  if (baseline_written(marker)) {
+    cli::cli_inform("{.path {basename(file)}} was already written; leaving it.")
+    return(invisible(FALSE))
+  }
+
+  out_dir <- tempfile("baseline")
+  on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
+  outcome <- store_submission(cfg, file, basename(file), out_dir,
+                              format(Sys.time(), "%Y%m%d%H%M%S"))
+  info <- parse_submission_filename(file)
+  write_submission_results(cfg, results_row(
+    basename(file), info$model_id, "baseline", unname(tools::md5sum(file)),
+    outcome$status, outcome$reason, outcome$warnings %||% ""
+  ))
+  if (outcome$status != "processed") {
+    cli::cli_abort("The baseline {.path {basename(file)}} was {outcome$status}: {outcome$reason}")
+  }
+
+  record <- tempfile()
+  on.exit(unlink(record), add = TRUE)
+  writeLines(format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"), record)
+  upload_file(record, marker)
+  invisible(TRUE)
 }
 
 #' Run a target group's baselines

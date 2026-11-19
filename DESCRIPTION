@@ -21,6 +21,7 @@ Imports:
     dplyr,
     duckdb,
     duckdbfs,
+    httr2,
     jsonlite,
     lubridate,
     minioclient,

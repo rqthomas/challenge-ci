@@ -27,6 +27,7 @@ Stages and their arguments:
    \code{drivers-stage3} \tab optional \code{rebuild} \tab \code{\link[=download_gefs]{download_gefs()}}, \code{\link[=update_stage3]{update_stage3()}} \cr
    \code{catalog} \tab optional catalog parts \tab \code{\link[=run_catalog]{run_catalog()}} \cr
    \code{dashboard} \tab optional output folder (default \code{dashboard/docs}) \tab \code{\link[=render_dashboard]{render_dashboard()}} \cr
+   \code{register} \tab  \tab \code{\link[=run_registration]{run_registration()}}, for the issue in \code{ISSUE_BODY} and \code{ISSUE_NUMBER} \cr
    \code{check} \tab  \tab \code{\link[=check_challenge_repo]{check_challenge_repo()}} \cr
 }
 

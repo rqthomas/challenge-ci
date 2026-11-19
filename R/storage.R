@@ -51,6 +51,49 @@ has_credentials <- function(cfg, store = "main") {
   nzchar(Sys.getenv(env$key_env)) && nzchar(Sys.getenv(env$secret_env))
 }
 
+#' Whether reads of the main store go without a key
+#'
+#' A public challenge's forecasts, scores and targets can be read anonymously,
+#' and the engine does so (a dry run then needs no secrets). With
+#' `public_read: false` in the config, every read of the main store uses its
+#' credentials instead, so the buckets can stay private. This covers the main
+#' store only: NOAA driver data is read as before.
+#'
+#' @inheritParams config_get
+#' @return `TRUE` when the main store is read anonymously.
+#' @export
+#' @examples
+#' anonymous_reads(list(public_read = FALSE))
+anonymous_reads <- function(cfg) {
+  !isFALSE(cfg$public_read)
+}
+
+# Anonymous if the store is public and there is no key (public stores can be
+# read without one; a private store always needs it).
+read_anonymously_without_key <- function(cfg) {
+  anonymous_reads(cfg) && !has_credentials(cfg, "main")
+}
+
+#' Region of a store
+#'
+#' S3 requests are signed for a region, and some providers reject the wrong
+#' one. The region is the config's `region` when set; for a Backblaze B2
+#' endpoint (`s3.<region>.backblazeb2.com`) it is read from the endpoint; and
+#' otherwise it is `us-east-1`, which stores that ignore the region (such as
+#' OSN) accept.
+#'
+#' @inheritParams store_credentials
+#' @return The region, a character scalar.
+#' @export
+#' @examples
+#' cfg <- list(endpoint = "s3.us-east-005.backblazeb2.com")
+#' store_region(cfg)
+store_region <- function(cfg, store = "main") {
+  endpoint <- store_credentials(cfg, store, anonymous = TRUE)$endpoint
+  match <- regmatches(endpoint, regexec("^s3\\.([a-z0-9-]+)\\.backblazeb2\\.com$", endpoint))[[1]]
+  cfg$region %||% (if (length(match) == 2) match[2]) %||% "us-east-1"
+}
+
 #' Connect to a store
 #'
 #' `mc_connect()` registers a minio client alias, which `mc_cp()`,
@@ -99,6 +142,7 @@ duckdb_connect <- function(cfg, store = "main", anonymous = FALSE,
     key = creds$key,
     secret = creds$secret,
     endpoint = creds$endpoint,
+    region = store_region(cfg, store),
     bucket = store_bucket(cfg, store),
     url_compatibility_mode = FALSE,
     conn = conn
@@ -158,10 +202,12 @@ arrow_bucket <- function(cfg, key, ..., anonymous = FALSE) {
   store <- bucket_key_store(key)
   creds <- store_credentials(cfg, store, anonymous = anonymous)
   path <- sub("^s3://", "", bucket_uri(cfg, key, ..., scheme = "s3"))
+  region <- store_region(cfg, store)
   if (anonymous) {
-    arrow::s3_bucket(path, endpoint_override = creds$endpoint, anonymous = TRUE)
+    arrow::s3_bucket(path, endpoint_override = creds$endpoint, region = region,
+                     anonymous = TRUE)
   } else {
-    arrow::s3_bucket(path, endpoint_override = creds$endpoint,
+    arrow::s3_bucket(path, endpoint_override = creds$endpoint, region = region,
                      access_key = creds$key, secret_key = creds$secret)
   }
 }

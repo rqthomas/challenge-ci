@@ -1,5 +1,7 @@
-# Processing new submissions: download from the submissions bucket, check,
-# standardise, and write to the forecasts bucket as parquet plus summaries.
+# Processing new submissions: download from the submissions bucket and, when the
+# config turns it on, from contributors' GitHub repositories (see
+# github_submissions.R); check, standardise, and write to the forecasts bucket as
+# parquet plus summaries. Both sources share one processed-submissions record.
 #
 # Since 2026-09-08 the NRP submissions key has had ListBucket permission only:
 # GetObject and DeleteObject return "Insufficient permissions". The bucket's
@@ -100,7 +102,8 @@ plan_submissions <- function(keys, processed, exclude_patterns = character(),
 #' @inheritParams config_get
 #' @param out_dir Local folder for the output.
 #' @param pub_datetime Publication time stamped on the forecast.
-#' @return A list with `status` and `reason`. `status` is `"processed"`, or
+#' @return A list with `status` and `reason`, and `warnings` (the validation
+#'   warnings, joined) when the file was read. `status` is `"processed"`, or
 #'   `"invalid"` (failed validation) or `"skipped"` (a file name, type or date
 #'   that is not processed). Errors are raised, not returned, so a failure can
 #'   be retried on the next run.
@@ -126,43 +129,178 @@ process_submission <- function(path, cfg, out_dir, pub_datetime = Sys.time()) {
   for (i in seq_len(nrow(problems))) {
     cli::cli_inform(c("!" = "{problems$severity[i]}: {problems$message[i]}"))
   }
+  warned <- paste(problems$message[problems$severity == "warning"], collapse = "; ")
   if (any(problems$severity == "error")) {
     return(list(status = "invalid",
                 reason = paste(problems$message[problems$severity == "error"],
-                               collapse = "; ")))
+                               collapse = "; "),
+                warnings = warned))
   }
 
   fc <- standardize_forecast(fc, cfg, info, pub_datetime = pub_datetime)
   file_id <- paste0("sub_", unname(tools::md5sum(path)))
   write_forecast_parquet(fc, file.path(out_dir, "parquet"), file_id)
   write_forecast_parquet(summarize_submission(fc), file.path(out_dir, "summaries"), file_id)
-  list(status = "processed", reason = paste(nrow(fc), "rows"))
+  list(status = "processed", reason = paste(nrow(fc), "rows"), warnings = warned)
 }
 
 #' Process all new submissions
 #'
-#' The `process_submissions` stage. For each new file in the submissions
-#' bucket:
+#' The `submissions` stage. New files come from up to two sources, used
+#' together:
+#'
+#' * the submissions bucket (unless `submissions$use_bucket` is `false`);
+#' * the contributors' GitHub repositories listed in the registry named by
+#'   `submissions$github$registry`, when that is set (see
+#'   [list_github_submissions()]).
+#'
+#' For each new file:
 #'
 #' 1. download it (a file that cannot be read is skipped and retried next run);
 #' 2. [process_submission()] it, and upload any parquet and summaries to the
 #'    forecasts and summaries buckets;
 #' 3. archive the raw file in `<forecasts_bucket>/raw/`, valid or not;
-#' 4. add it to the processed-submissions record, then delete it from the
-#'    submissions bucket (best effort).
+#' 4. add it to the processed-submissions record and, for the bucket, delete it
+#'    there (best effort).
+#'
+#' Afterwards what happened to each file is published for its submitter, see
+#' [write_submission_results()].
 #'
 #' A submission that errors is logged and left out of the record, so it is
-#' retried on the next run. The run carries on with the others and fails at the
-#' end if any errored.
+#' retried on the next run. The run carries on with the others, and with the
+#' other source if one fails, and fails at the end if anything errored.
 #'
 #' @inheritParams config_get
-#' @return A tibble with one row per downloaded submission: `key`, `status`
-#'   (`"processed"`, `"invalid"`, `"skipped"` or `"failed"`) and `reason`,
+#' @return A tibble with one row per file looked at: `key`, `status`
+#'   (`"processed"`, `"invalid"`, `"skipped"`, `"unreadable"` or `"failed"`)
+#'   and `reason`, with the columns described in [write_submission_results()],
 #'   invisibly.
 #' @export
 run_submissions <- function(cfg) {
   log_step("Processing submissions")
-  mc_connect(cfg, "main")
+  # A dry run without the main store's key reads its public buckets anonymously.
+  mc_connect(cfg, "main", anonymous = is_dry_run() && read_anonymously_without_key(cfg))
+
+  use_bucket <- isTRUE(config_get(cfg, "submissions", "use_bucket", default = TRUE))
+  use_github <- github_enabled(cfg)
+  if (!use_bucket && !use_github) {
+    cli::cli_abort(paste("No submission source is on: set {.field submissions$github$registry}",
+                         "or leave {.field submissions$use_bucket} true."))
+  }
+
+  state <- list(
+    processed = read_manifest(cfg),
+    work_dir = tempfile("submissions"),
+    time_stamp = format(Sys.time(), "%Y%m%d%H%M%S")
+  )
+  on.exit(unlink(state$work_dir, recursive = TRUE), add = TRUE)
+
+  results <- list()
+  source_errors <- character()
+  run_source <- function(name, fun) {
+    log_step("Source: {name}")
+    out <- tryCatch(fun(cfg, state), error = function(e) {
+      cli::cli_alert_danger("Source {name} failed: {conditionMessage(e)}")
+      source_errors <<- c(source_errors, paste0(name, ": ", conditionMessage(e)))
+      NULL
+    })
+    if (!is.null(out)) {
+      state$processed <<- out$processed
+      results[[name]] <<- out$results
+    }
+  }
+  if (use_bucket) run_source("bucket", process_bucket_submissions)
+  if (use_github) run_source("github", process_github_submissions)
+
+  results <- dplyr::bind_rows(results)
+  if (nrow(results) == 0) results <- empty_results()
+  counts <- table(factor(results$status,
+                         c("processed", "invalid", "skipped", "unreadable", "failed")))
+  log_step(
+    "Done: {counts[['processed']]} processed, {counts[['invalid']]} invalid, ",
+    "{counts[['skipped']]} skipped, {counts[['unreadable']]} unreadable, ",
+    "{counts[['failed']]} failed."
+  )
+
+  write_submission_results(cfg, results)
+
+  failed <- results$key[results$status == "failed" & !is.na(results$key)]
+  if (length(source_errors) > 0) {
+    cli::cli_abort(c("A submission source failed:", rlang::set_names(source_errors, "x")))
+  }
+  if (length(failed) > 0) {
+    cli::cli_abort(c(
+      "{length(failed)} submission{?s} failed and will be retried next run:",
+      rlang::set_names(failed, "x")
+    ))
+  }
+  invisible(results)
+}
+
+# Process a downloaded file and put everything it produces in its place:
+# parquet and summaries (when valid) and the raw archive copy. Returns the
+# outcome of process_submission(). Errors propagate, so the caller can leave the
+# file out of the record and retry it.
+store_submission <- function(cfg, local, key, out_dir, time_stamp) {
+  outcome <- process_submission(local, cfg, out_dir)
+  if (outcome$status == "processed") {
+    upload_dir(file.path(out_dir, "parquet"),
+               bucket_uri(cfg, "forecasts_bucket", "parquet", scheme = "mc"))
+    upload_dir(file.path(out_dir, "summaries"),
+               bucket_uri(cfg, "summaries_bucket", "summaries", scheme = "mc"))
+  }
+  upload_file(local, bucket_uri(cfg, "forecasts_bucket", "raw",
+                                paste0("T", time_stamp, "_", basename(key)),
+                                scheme = "mc"))
+  outcome
+}
+
+# Download and process one file. `fetch(local)` downloads it (errors mean
+# "unreadable"); `after_record()` runs once the file is in the record. Returns
+# list(row, processed): the results row and the updated record.
+handle_submission <- function(cfg, state, processed, key, source, sha, model_id,
+                              fetch, after_record = function() NULL) {
+  log_step("{key}")
+  local <- file.path(state$work_dir, "raw", key)
+  dir.create(dirname(local), recursive = TRUE, showWarnings = FALSE)
+  out_dir <- tempfile("out", tmpdir = state$work_dir)
+  on.exit(unlink(c(local, out_dir), recursive = TRUE), add = TRUE)
+
+  downloaded <- tryCatch({
+    fetch(local)
+    TRUE
+  }, error = function(e) {
+    cli::cli_warn("Could not download {.path {key}}: {conditionMessage(e)}")
+    FALSE
+  })
+  if (!downloaded) {
+    return(list(processed = processed,
+                row = results_row(key, model_id, source, sha, "unreadable",
+                                  "download failed")))
+  }
+  if (is.na(sha)) sha <- unname(tools::md5sum(local))
+
+  result <- tryCatch({
+    outcome <- store_submission(cfg, local, key, out_dir, state$time_stamp)
+    # Record first, delete second: if the delete succeeded but the record
+    # was never written, the submission would be lost rather than retried.
+    recorded <- unique(c(processed, key))
+    write_manifest(cfg, recorded)
+    processed <- recorded
+    after_record()
+    outcome
+  }, error = function(e) list(status = "failed", reason = conditionMessage(e)))
+  if (result$status != "processed") {
+    cli::cli_inform(c("!" = "{result$status}: {result$reason}"))
+  }
+  list(processed = processed,
+       row = results_row(key, model_id, source, sha, result$status, result$reason,
+                         result$warnings %||% ""))
+}
+
+# The submissions bucket: list with the key, read and delete anonymously (see
+# the note at the top of this file).
+process_bucket_submissions <- function(cfg, state) {
   mc_connect(cfg, "submissions", alias = submissions_alias)
   mc_connect(cfg, "submissions", alias = submissions_public_alias, anonymous = TRUE)
 
@@ -183,7 +321,7 @@ run_submissions <- function(cfg) {
     )
   }
 
-  processed <- read_manifest(cfg)
+  processed <- state$processed
   keys <- remote_files(paste0(submissions_alias, "/", bucket))$key
   plan <- plan_submissions(
     keys, processed,
@@ -199,82 +337,49 @@ run_submissions <- function(cfg) {
   # Processed submissions still in the bucket because an earlier delete failed.
   n_removed <- sum(vapply(plan$stale, remove_submission, logical(1)))
 
-  work_dir <- tempfile("submissions")
-  on.exit(unlink(work_dir, recursive = TRUE), add = TRUE)
-  time_stamp <- format(Sys.time(), "%Y%m%d%H%M%S")
-  results <- vector("list", length(plan$download))
-
+  rows <- vector("list", length(plan$download))
   for (i in seq_along(plan$download)) {
     key <- plan$download[i]
-    log_step("{key}")
-    local <- file.path(work_dir, "raw", key)
-    dir.create(dirname(local), recursive = TRUE, showWarnings = FALSE)
-
-    downloaded <- tryCatch(
-      {
-        minioclient::mc_cp(public_key(key), shQuote(local))
-        TRUE
-      },
-      error = function(e) {
-        cli::cli_warn("Could not download {.path {key}}: {conditionMessage(e)}")
-        FALSE
-      }
+    handled <- handle_submission(
+      cfg, state, processed, key, source = "bucket", sha = NA_character_,
+      model_id = parse_submission_filename(key)$model_id,
+      fetch = function(local) minioclient::mc_cp(public_key(key), shQuote(local)),
+      after_record = function() n_removed <<- n_removed + remove_submission(key)
     )
-    if (!downloaded) {
-      results[[i]] <- tibble::tibble(key = key, status = "unreadable",
-                                     reason = "download failed")
-      next
-    }
+    processed <- handled$processed
+    rows[[i]] <- handled$row
+  }
+  log_step("Bucket: {length(plan$download)} new file{?s}; {n_removed} deleted from the bucket.")
+  list(results = dplyr::bind_rows(rows), processed = processed)
+}
 
-    out_dir <- file.path(work_dir, "out", i)
-    result <- tryCatch(
-      {
-        outcome <- process_submission(local, cfg, out_dir)
-        if (outcome$status == "processed") {
-          upload_dir(file.path(out_dir, "parquet"),
-                     bucket_uri(cfg, "forecasts_bucket", "parquet", scheme = "mc"))
-          upload_dir(file.path(out_dir, "summaries"),
-                     bucket_uri(cfg, "summaries_bucket", "summaries", scheme = "mc"))
-        }
-        upload_file(local, bucket_uri(cfg, "forecasts_bucket", "raw",
-                                      paste0("T", time_stamp, "_", basename(key)),
-                                      scheme = "mc"))
-        # Record first, delete second: if the delete succeeded but the record
-        # was never written, the submission would be lost rather than retried.
-        processed <- unique(c(processed, key))
-        write_manifest(cfg, processed)
-        n_removed <- n_removed + remove_submission(key)
-        outcome
-      },
-      error = function(e) list(status = "failed", reason = conditionMessage(e))
+# Contributors' GitHub repositories.
+process_github_submissions <- function(cfg, state) {
+  processed <- state$processed
+  listing <- list_github_submissions(cfg, processed)
+  files <- listing$files
+
+  # Files to report but not download (unusable name, unlisted model, too big).
+  # They are not recorded, so the submitter can fix the file or the listing;
+  # the published results keep one row per outcome, not one per run.
+  skipped <- files[files$action == "skip", ]
+  rows <- list(listing$registrations)
+  if (nrow(skipped) > 0) {
+    rows[[2]] <- results_row(skipped$key, skipped$model_id,
+                             paste0("github:", skipped$repo), skipped$sha,
+                             "skipped", skipped$reason, file = skipped$path)
+  }
+
+  todo <- files[files$action == "download", ]
+  log_step("GitHub: {nrow(listing$registrations)} repositor{?y/ies}, {nrow(todo)} new file{?s}.")
+  for (i in seq_len(nrow(todo))) {
+    handled <- handle_submission(
+      cfg, state, processed, todo$key[i], source = paste0("github:", todo$repo[i]),
+      sha = todo$sha[i], model_id = todo$model_id[i],
+      fetch = function(local) github_blob(todo$repo[i], todo$sha[i], local)
     )
-    if (result$status != "processed") {
-      cli::cli_inform(c("!" = "{result$status}: {result$reason}"))
-    }
-    results[[i]] <- tibble::tibble(key = key, status = result$status,
-                                   reason = result$reason)
-    unlink(c(local, out_dir), recursive = TRUE)
+    processed <- handled$processed
+    rows[[length(rows) + 1]] <- dplyr::mutate(handled$row, file = todo$path[i])
   }
-
-  results <- purrr::list_rbind(results)
-  if (is.null(results) || nrow(results) == 0) {
-    results <- tibble::tibble(key = character(), status = character(),
-                              reason = character())
-  }
-  counts <- table(factor(results$status,
-                         c("processed", "invalid", "skipped", "unreadable", "failed")))
-  log_step(
-    "Done: {counts[['processed']]} processed, {counts[['invalid']]} invalid, ",
-    "{counts[['skipped']]} skipped, {counts[['unreadable']]} unreadable, ",
-    "{counts[['failed']]} failed; {n_removed} deleted from the bucket."
-  )
-
-  failed <- results$key[results$status == "failed"]
-  if (length(failed) > 0) {
-    cli::cli_abort(c(
-      "{length(failed)} submission{?s} failed and will be retried next run:",
-      rlang::set_names(failed, "x")
-    ))
-  }
-  invisible(results)
+  list(results = dplyr::bind_rows(rows), processed = processed)
 }

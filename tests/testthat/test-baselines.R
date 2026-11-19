@@ -126,3 +126,70 @@ test_that("submit_forecast() refuses an invalid forecast", {
   fc <- dplyr::select(example_forecast(), -"family")
   expect_error(submit_forecast(fc, cfg, "lakes"), "not valid")
 })
+
+direct_cfg <- function() {
+  cfg <- test_config()
+  cfg$submissions$baselines_destination <- "forecasts_bucket"
+  cfg
+}
+
+test_that("baselines can be written straight to the forecasts bucket", {
+  skip_if_not_installed("score4cast")
+  skip_if_not_installed("arrow")
+  dir <- withr::local_tempdir()
+  withr::local_envvar(DRY_RUN = "true", DRY_RUN_DIR = dir)
+  results <- NULL
+  testthat::local_mocked_bindings(
+    mc_connect = function(...) invisible(NULL),
+    baseline_written = function(marker) FALSE,
+    write_submission_results = function(cfg, rows) results <<- rows
+  )
+  fc <- example_forecast()
+  fc$model_id <- "my-model"
+  suppressMessages(submit_forecast(fc, direct_cfg(), "lakes"))
+
+  written <- list.files(dir, recursive = TRUE)
+  expect_true(any(grepl("forecasts/parquet/.*\\.parquet$", written)))
+  expect_true(any(grepl("forecasts/summaries/.*\\.parquet$", written)))
+  expect_true(any(grepl("forecasts/raw/T[0-9]+_lakes-2024-03-01-my-model\\.csv\\.gz$", written)))
+  expect_true(any(grepl("baseline_records/lakes-2024-03-01-my-model\\.csv\\.gz\\.done$", written)))
+  # Nothing goes to the submissions bucket.
+  expect_false(any(grepl("^submissions/", written)))
+  expect_equal(c(results$status, results$source, results$model_id),
+               c("processed", "baseline", "my-model"))
+})
+
+test_that("a baseline already written is left alone", {
+  dir <- withr::local_tempdir()
+  withr::local_envvar(DRY_RUN = "true", DRY_RUN_DIR = dir)
+  testthat::local_mocked_bindings(
+    mc_connect = function(...) invisible(NULL),
+    baseline_written = function(marker) TRUE
+  )
+  expect_message(submit_forecast(example_forecast(), direct_cfg(), "lakes"),
+                 "already written")
+  expect_length(list.files(dir, recursive = TRUE), 0)
+})
+
+test_that("a baseline that cannot be processed fails and leaves no marker", {
+  dir <- withr::local_tempdir()
+  withr::local_envvar(DRY_RUN = "true", DRY_RUN_DIR = dir)
+  cfg <- direct_cfg()
+  cfg$submissions$min_reference_date <- "2030-01-01"
+  testthat::local_mocked_bindings(
+    mc_connect = function(...) invisible(NULL),
+    baseline_written = function(marker) FALSE,
+    write_submission_results = function(cfg, rows) NULL
+  )
+  expect_error(suppressMessages(submit_forecast(example_forecast(), cfg, "lakes")),
+               "skipped")
+  expect_false(any(grepl("baseline_records", list.files(dir, recursive = TRUE))))
+})
+
+test_that("an unknown baselines_destination is a config error", {
+  cfg <- test_config()
+  cfg$submissions$baselines_destination <- "somewhere"
+  problems <- config_problems(cfg)
+  expect_match(problems$message[problems$key == "submissions$baselines_destination"],
+               "must be one of")
+})

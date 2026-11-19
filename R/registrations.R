@@ -65,20 +65,49 @@ registration_columns <- function(cfg = list()) {
 
 #' Models registered for this challenge
 #'
+#' Two sources are combined. The registration sheet
+#' (`model_metadata_gsheet`, see [read_sheet_models()]) lists the models
+#' registered through the form. When the challenge reads GitHub repositories
+#' (`submissions$github$registry`), each repository's `challenge-model.yaml`
+#' describes the models it submits (see [read_github_models()]). A model in
+#' both takes its answers from the file, field by field, falling back to the
+#' sheet for a question the file leaves out; a model only in the file is
+#' registered by it, so GitHub participants need not fill in the form.
+#'
+#' @inheritParams config_get
+#' @param sheet The registration sheet, if already read. `NULL` reads it.
+#' @param github The GitHub models from [read_github_models()], if already
+#'   read. `NULL` reads them (only when the challenge reads GitHub).
+#' @return A tibble with the short column names of [registration_columns()].
+#'   Questions missing from the sheet are `NA` columns.
+#' @export
+read_registered_models <- function(cfg, sheet = NULL, github = NULL) {
+  models <- read_sheet_models(cfg, sheet)
+  if (!github_enabled(cfg) && is.null(github)) return(models)
+  github <- github %||% read_github_models(cfg)
+  merge_github_models(models, github, cfg)
+}
+
+#' Models registered through the registration form
+#'
 #' Reads the registration sheet (`model_metadata_gsheet`), keeps this
 #' challenge's rows, drops example models (ids containing `example_model_id`,
 #' default `"example"`) and keeps one row per model: the most complete one,
 #' and the earliest of those if several are equally complete (later rows with
-#' the same id are usually accidental re-registrations).
+#' the same id are usually accidental re-registrations). A challenge that reads
+#' GitHub repositories may leave `model_metadata_gsheet` out, and then has no
+#' sheet models.
 #'
-#' @inheritParams config_get
-#' @param sheet The registration sheet, if already read. `NULL` reads it.
+#' @inheritParams read_registered_models
 #' @return A tibble with the short column names of [registration_columns()].
-#'   Questions missing from the sheet are `NA` columns.
 #' @export
-read_registered_models <- function(cfg, sheet = NULL) {
-  sheet <- sheet %||% read_google_sheet(config_get(cfg, "model_metadata_gsheet"))
+read_sheet_models <- function(cfg, sheet = NULL) {
   columns <- registration_columns(cfg)
+  if (is.null(sheet) && is.null(cfg$model_metadata_gsheet) && github_enabled(cfg)) {
+    sheet <- tibble::as_tibble(rlang::set_names(rep(list(character()), length(columns)),
+                                                columns))
+  }
+  sheet <- sheet %||% read_google_sheet(config_get(cfg, "model_metadata_gsheet"))
   for (col in setdiff(columns, names(sheet))) sheet[[col]] <- NA_character_
   example <- cfg$example_model_id %||% "example"
   sheet |>
@@ -91,6 +120,21 @@ read_registered_models <- function(cfg, sheet = NULL) {
     dplyr::distinct(.data$model_id, .keep_all = TRUE) |>
     dplyr::arrange(.data$model_id) |>
     dplyr::select(-".filled", -".row")
+}
+
+# Models from the form, updated with and extended by the models described in
+# GitHub repositories: for a model in both, the file's answers win where given.
+merge_github_models <- function(sheet_models, github_models, cfg) {
+  columns <- setdiff(names(sheet_models), "model_id")
+  example <- cfg$example_model_id %||% "example"
+  github_models <- github_models[!grepl(example, github_models$model_id, fixed = TRUE), ]
+
+  both <- match(sheet_models$model_id, github_models$model_id)
+  for (col in columns) {
+    sheet_models[[col]] <- dplyr::coalesce(github_models[[col]][both], sheet_models[[col]])
+  }
+  new <- github_models[!github_models$model_id %in% sheet_models$model_id, names(sheet_models)]
+  dplyr::arrange(dplyr::bind_rows(sheet_models, new), .data$model_id)
 }
 
 #' Long names and descriptions of the challenge's variables
@@ -224,7 +268,7 @@ model_metadata <- function(reg) {
 #' @return The number of records written, invisibly.
 #' @export
 write_model_metadata <- function(cfg, registered = read_registered_models(cfg)) {
-  mc_connect(cfg, "main", anonymous = !has_credentials(cfg, "main"))
+  mc_connect(cfg, "main", anonymous = read_anonymously_without_key(cfg))
   dest <- bucket_uri(cfg, "model_metadata_bucket", scheme = "mc")
   existing <- sub("\\.json$", "", remote_files(dest)$key)
   keep <- !is.na(registered$model_type) | !registered$model_id %in% existing

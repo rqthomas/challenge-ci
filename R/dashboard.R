@@ -83,7 +83,7 @@ plot_sites <- function(cfg) {
 stage_dashboard_data <- function(cfg, out_dir = file.path("dashboard", "data"),
                                  now = Sys.time()) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  duckdb_connect(cfg, "main", anonymous = TRUE)
+  duckdb_connect(cfg, "main", anonymous = anonymous_reads(cfg))
   conn <- duckdbfs::cached_connection()
   settings <- dashboard_settings(cfg)
   sites <- plot_sites(cfg)

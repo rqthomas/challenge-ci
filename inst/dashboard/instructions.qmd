@@ -9,6 +9,7 @@ source("R/setup.R")
 # This page shows its code.
 knitr::opts_chunk$set(echo = TRUE)
 themes <- unique(unlist(purrr::map(cfg$target_groups, "theme")))
+use_github <- !is.null(cfg$submissions$github$registry)
 horizons <- range(variables$max_horizon)
 ```
 
@@ -17,7 +18,7 @@ horizons <- range(variables$max_horizon)
 We provide an overview of the steps for submitting with the details below:
 
 1)  Explore the [data](targets.qmd#sec-targets) (e.g., targets) and build your forecast model.
-2)  Register and describe your model at <`r settings$registration_form_url`>. You are not required to register if your forecast submission uses the word "example" in your model_id. Any forecasts with "example" in the model_id will not be used in forecast evaluation analyses. Use `` `r cfg$project_id` `` as the challenge for which you are registering.
+2)  Register and describe your model `r if (use_github) "in the challenge-model.yaml file in your GitHub repository (described below), or" else "at"` <`r settings$registration_form_url`>. You are not required to register if your forecast submission uses the word "example" in your model_id. Any forecasts with "example" in the model_id will not be used in forecast evaluation analyses. Use `` `r cfg$project_id` `` as the challenge for which you are registering.
 3)  Generate a forecast!
 4)  Write the forecast output to a file that follows our standardized format (described below).
 5)  Submit your forecast (described below).

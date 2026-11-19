@@ -2,7 +2,7 @@
 % Please edit documentation in R/baselines.R
 \name{submit_forecast}
 \alias{submit_forecast}
-\title{Submit a forecast the way a participant would}
+\title{Submit a forecast}
 \usage{
 submit_forecast(forecast, cfg, theme)
 }
@@ -14,11 +14,26 @@ submit_forecast(forecast, cfg, theme)
 \item{theme}{File name prefix.}
 }
 \value{
-The uploaded file's name, invisibly.
+The file's name, invisibly.
 }
 \description{
-Checks the forecast with \code{\link[=validate_forecast]{validate_forecast()}}, writes it as
-\verb{<theme>-<reference date>-<model_id>.csv.gz} and uploads it to the
-submissions bucket, where the submissions stage processes it like any other.
+Checks the forecast with \code{\link[=validate_forecast]{validate_forecast()}} and writes it as
+\verb{<theme>-<reference date>-<model_id>.csv.gz}. Where it goes depends on
+\code{submissions$baselines_destination} in the config:
+}
+\details{
+\itemize{
+\item \code{submissions_bucket} (the default): uploaded to the submissions bucket,
+where the submissions stage processes it like any other submission.
+\item \code{forecasts_bucket}: processed here and written straight to the forecasts
+bucket (parquet, summaries and the raw copy in \verb{raw/}, exactly as the
+submissions stage would), and recorded in
+\verb{submission_results/<model_id>.csv} with source \code{baseline}. A forecast
+already written for that model and reference date is not written again,
+as the submissions stage ignores a file name it has seen: an empty marker
+in \verb{<forecasts_bucket>/baseline_records/} says so. Delete the marker to
+write it again.
+}
+
 In a dry run the file goes to \code{\link[=dry_run_dir]{dry_run_dir()}} instead.
 }

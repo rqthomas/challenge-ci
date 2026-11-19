@@ -33,27 +33,46 @@ targets_object <- function(cfg, group, alias = "main") {
 #' can then be dry-run on targets that are not published yet, as when
 #' launching a challenge.
 #'
+#' When the main store is private (`public_read: false`) a URL cannot be read
+#' directly, so each file is downloaded with the store's key into a temporary
+#' folder and its local path is returned instead.
+#'
 #' @inheritParams config_get
 #' @param files Targets file URLs. Defaults to every group's.
 #' @return A character vector of URLs or local paths.
 #' @export
 targets_files <- function(cfg, files = target_variables(cfg)$targets_file) {
   files <- unique(stats::na.omit(files))
-  if (!is_dry_run()) return(files)
   purrr::map_chr(files, function(url) {
-    group <- names(cfg$target_groups)[purrr::map_chr(
-      cfg$target_groups, \(g) g$targets_file %||% NA_character_
-    ) %in% url][1]
+    group <- targets_group(cfg, url)
     # A file outside the store (e.g. a local path) is read as it is.
     object <- tryCatch(targets_object(cfg, group), error = function(e) NULL)
-    local <- if (!is.null(object)) file.path(dry_run_dir(), object)
+    local <- if (!is.null(object) && is_dry_run()) file.path(dry_run_dir(), object)
     if (!is.null(local) && file.exists(local)) {
       cli::cli_inform("DRY RUN: reading {.path {local}} instead of {.url {url}}.")
       local
+    } else if (!is.null(object) && !anonymous_reads(cfg)) {
+      download_targets(cfg, object)
     } else {
       url
     }
   })
+}
+
+# The target group whose `targets_file` is `url`.
+targets_group <- function(cfg, url) {
+  urls <- purrr::map_chr(cfg$target_groups, \(g) g$targets_file %||% NA_character_)
+  names(cfg$target_groups)[urls %in% url][1]
+}
+
+# Download a targets file from the private main store into a temporary folder.
+download_targets <- function(cfg, object) {
+  mc_connect(cfg, "main")
+  dir <- file.path(tempdir(), "targets", gsub("[^A-Za-z0-9]+", "_", dirname(object)))
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  dest <- file.path(dir, basename(object))
+  minioclient::mc_cp(object, shQuote(dest))
+  dest
 }
 
 #' Put targets in the standard format
@@ -90,11 +109,12 @@ format_targets <- function(targets, cfg, duration) {
 #' @export
 read_published_targets <- function(cfg, group) {
   url <- group_config(cfg, group)$targets_file
-  mc_connect(cfg, "main", alias = "main_public", anonymous = TRUE)
-  if (length(minioclient::mc_ls(targets_object(cfg, group, alias = "main_public"))) == 0) {
-    return(NULL)
-  }
-  readr::read_csv(url, guess_max = 1e6, show_col_types = FALSE, progress = FALSE)
+  mc_connect(cfg, "main", alias = "main_public", anonymous = anonymous_reads(cfg))
+  object <- targets_object(cfg, group, alias = "main_public")
+  if (length(minioclient::mc_ls(object)) == 0) return(NULL)
+  # A private store's file cannot be fetched by its URL.
+  path <- if (anonymous_reads(cfg)) url else download_targets(cfg, object)
+  readr::read_csv(path, guess_max = 1e6, show_col_types = FALSE, progress = FALSE)
 }
 
 #' Check new targets before they replace the published ones

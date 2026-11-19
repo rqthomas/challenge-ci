@@ -21,3 +21,8 @@ an earlier dry run wrote (with \code{\link[=write_targets]{write_targets()}}, in
 can then be dry-run on targets that are not published yet, as when
 launching a challenge.
 }
+\details{
+When the main store is private (\code{public_read: false}) a URL cannot be read
+directly, so each file is downloaded with the store's key into a temporary
+folder and its local path is returned instead.
+}

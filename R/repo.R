@@ -6,8 +6,9 @@
 #'
 #' Runs [config_problems()] on the repository's config and checks that every
 #' local file the config names exists: each group's `targets_script`,
-#' `catalog_config$site_columns_file`, and the site metadata when it is a local
-#' path rather than a URL.
+#' `catalog_config$site_columns_file`, the GitHub registry
+#' (`submissions$github$registry`) when it is a local path, and the site
+#' metadata when it is a local path rather than a URL.
 #'
 #' @param root The challenge repository's root folder.
 #' @param config Path of its config file.
@@ -31,7 +32,10 @@ check_challenge_repo <- function(root = ".",
     if (!is.null(cfg$catalog_config$site_columns_file)) {
       paste0("catalog_config$site_columns_file=", cfg$catalog_config$site_columns_file)
     },
-    if (rlang::is_string(cfg$sites$metadata_url) && !grepl("^[a-z]+://", cfg$sites$metadata_url)) {
+    if (is_local_path(cfg$submissions$github$registry)) {
+      paste0("submissions$github$registry=", cfg$submissions$github$registry)
+    },
+    if (is_local_path(cfg$sites$metadata_url)) {
       paste0("sites$metadata_url=", cfg$sites$metadata_url)
     }
   )
@@ -45,4 +49,9 @@ check_challenge_repo <- function(root = ".",
     }
   }
   problems
+}
+
+# A setting that is a file path in the repository, not a URL or missing.
+is_local_path <- function(x) {
+  rlang::is_string(x) && !grepl("^[a-z]+://", x)
 }

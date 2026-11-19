@@ -59,6 +59,8 @@ There are four stores. A store is an S3 endpoint plus its credentials:
 | `endpoint` | yes | Host of the `main` store, without `https://`. | all |
 | `submissions_endpoint` | | Host of the `submissions` store. | submissions |
 | `noaa_endpoint` | | Host of the `noaa` store. Defaults to `endpoint`. | catalog, drivers |
+| `public_read` | `true` | Whether the main store's buckets (forecasts, scores, targets, metadata) can be read without a key. The engine then reads them anonymously, which lets dry runs work without secrets. Set `false` for a private store: every read uses the key (`credentials`), and the targets files are downloaded with it instead of by URL. Does not apply to the NOAA driver store. See [operations.md](operations.md#a-private-bucket). | all |
+| `region` | | Region to sign S3 requests for. Only needed when the store rejects `us-east-1`; read from a Backblaze B2 endpoint (`s3.<region>.backblazeb2.com`) automatically. | all |
 | `forecasts_bucket` | yes | Forecasts: `parquet/` (new), `bundled-parquet/`, `archive-parquet/` (bundled), `raw/` (every submitted file). | submissions, bundling, scoring, catalog, dashboard |
 | `summaries_bucket` | | Forecast summaries: `summaries/` (new) and `bundled-summaries/`. Defaults to `forecasts_bucket`. | submissions, bundling, catalog, dashboard |
 | `scores_bucket` | yes | Scores: `parquet/` and `bundled-parquet/`. | scoring, catalog, dashboard |
@@ -84,6 +86,13 @@ secrets, which the workflows expose as the environment variables named above.
 | `submissions$exclude_patterns` | | Regular expressions. Keys in the submissions bucket that match any of them are never downloaded or recorded. NEON uses `2023` and `usgsrc4cast`. | submissions |
 | `submissions$known_themes_only` | `false` | If `true`, only files whose name starts with one of the target groups' themes are processed; every other file is left in the bucket untouched. Set it when the submissions bucket is shared with another challenge. | submissions |
 | `submissions$min_reference_date` | | Files whose name dates them before this (`YYYY-MM-DD`) are archived without being processed. | submissions |
+| `submissions$use_bucket` | `true` | Read the submissions bucket. Set `false` to take submissions only from GitHub repositories (see `submissions$github`); the bucket's credentials are then not needed. | submissions |
+| `submissions$baselines_destination` | `submissions_bucket` | Where baseline forecasts go. `submissions_bucket` uploads them for the submissions stage to process like any submission. `forecasts_bucket` processes them on the spot and writes parquet, summaries and the raw copy straight to the forecasts bucket, so the baselines need only the main store's key (`OSN_KEY`) and not the submissions key. | baselines |
+| `submissions$github$registry` | | Turns on submissions from contributors' public GitHub repositories, read alongside the bucket. A CSV (path in the challenge repository, or URL) with one row per repository: `repo` (`owner/name`), optional `repo_id` (GitHub's numeric id; when given it must match) and `registered` (a date). See [operations.md](operations.md#submissions-from-github-repositories). | submissions |
+| `submissions$github$issue_registration` | `false` | Set `true` when the challenge repository has the registration issue form and workflow (see [operations.md](operations.md#submissions-from-github-repositories)); the dashboard's instructions then link to the form instead of asking participants to email. | dashboard |
+| `submissions$github$max_file_mb` | `100` | Largest forecast file read from a repository. Larger files are reported as skipped. | submissions |
+| `submissions$github$max_files_per_repo` | `100` | Most new files read from one repository in a run (oldest names first); the rest follow in the next runs. | submissions |
+| `submissions$results_max_rows` | `200` | Rows kept in each model's published results file (`<forecasts_bucket>/submission_results/<model_id>.csv`), which says what happened to each submitted file. | submissions |
 
 A submission file must be named `<theme>-<YYYY-MM-DD>-<model_id>.csv` or `.csv.gz`.
 Files that are not are archived to `raw/` and recorded without being processed.
