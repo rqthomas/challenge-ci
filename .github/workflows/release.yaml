@@ -11,6 +11,10 @@
 # So a challenge that calls `.../_scoring.yaml@v0.4.0` runs package 0.4.0 in
 # image 0.4.0. Because the owner comes from this repository, the same workflow
 # works in a staging copy under another account.
+#
+# Needs the secret RELEASE_TOKEN: the tagged commit changes workflow files, and
+# GitHub refuses such pushes from the built-in GITHUB_TOKEN. Use a fine-grained
+# token for this repository only with Contents and Workflows: read and write.
 name: release
 
 on:
@@ -35,10 +39,21 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
     steps:
+      - name: Check the release token
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::error::Set the RELEASE_TOKEN secret (Contents and Workflows: read and write); see the header of release.yaml."
+            exit 1
+          fi
+
+      # The tag is pushed with RELEASE_TOKEN, which may change workflow files.
       - uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Check the version
         run: |

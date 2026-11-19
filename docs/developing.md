@@ -96,6 +96,12 @@ creates the GitHub release from the `CHANGELOG.md` section. `main` itself keeps
 the `@main` references. Because the owner comes from the repository, the same
 workflow releases from a staging copy under another account.
 
+The workflow needs the repository secret `RELEASE_TOKEN`: the tagged commit
+changes workflow files, which GitHub never lets the built-in `GITHUB_TOKEN`
+push. Use a fine-grained token limited to this repository with **Contents** and
+**Workflows** set to read and write (in `eco4cast`, an organisation-owned token
+or GitHub App token, so releases don't depend on one person's account).
+
 Before releasing, add a `## vX.Y.Z` section to `CHANGELOG.md`. Minor releases
 only add (new config keys are optional with defaults); anything that requires
 challenges to change is a major release, and its section says what to change.
