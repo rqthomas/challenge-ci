@@ -51,6 +51,9 @@ jobs:
           token: ${{ secrets.TEMPLATE_TOKEN || github.token }}
           path: template
 
+      # mc for uploads and listings (stopgap until the move to rclone; see the action).
+      - uses: ./engine/.github/actions/install-mc
+
       - name: Install the engine from this checkout
         working-directory: .
         run: R CMD INSTALL --no-test-load engine
