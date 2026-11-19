@@ -1,0 +1,24 @@
+# Trigger for the engine's drivers-stage1-2 workflow. Copy into .github/workflows/ of a
+# challenge repository; set the schedule, and the engine version after @.
+name: drivers-stage1-2
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: read real data, write nothing (output kept as an artifact)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: drivers-stage1-2
+  cancel-in-progress: false
+
+jobs:
+  run:
+    uses: eco4cast/challenge-ci/.github/workflows/_drivers_stage1_2.yaml@main
+    with:
+      dry_run: ${{ inputs.dry_run || false }}
+    secrets: inherit

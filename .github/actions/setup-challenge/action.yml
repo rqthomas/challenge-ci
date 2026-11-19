@@ -17,7 +17,10 @@ runs:
       shell: bash
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-    - uses: ./.github/actions/install-mc
+    # Engine actions are referenced by full name: inside a workflow called from
+    # a challenge repo, ./ paths point at the challenge's checkout. The release
+    # workflow rewrites eco4cast/challenge-ci and @main to the released version.
+    - uses: eco4cast/challenge-ci/.github/actions/install-mc@main
 
     - name: Refresh CA certificates
       if: inputs.refresh-ca == 'true'

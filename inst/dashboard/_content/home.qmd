@@ -1,0 +1,7 @@
+<!-- Default home page introduction. A challenge replaces it with its own
+     _content/home.qmd in its dashboard folder. -->
+
+We invite you to submit forecasts to the `r cfg$challenge_long_name`!
+
+The [instructions](instructions.qmd) explain how to take part, and
+[what to forecast](targets.qmd) describes the targets.

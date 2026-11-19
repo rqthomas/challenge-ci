@@ -25,6 +25,37 @@ targets_object <- function(cfg, group, alias = "main") {
   paste0(alias, "/", substring(url, nchar(prefix) + 1))
 }
 
+#' The targets files to read
+#'
+#' Every target group's `targets_file`, once each. In a dry run, a file that
+#' an earlier dry run wrote (with [write_targets()], into the same
+#' `DRY_RUN_DIR`) is read from there instead of from the store. Later stages
+#' can then be dry-run on targets that are not published yet, as when
+#' launching a challenge.
+#'
+#' @inheritParams config_get
+#' @param files Targets file URLs. Defaults to every group's.
+#' @return A character vector of URLs or local paths.
+#' @export
+targets_files <- function(cfg, files = target_variables(cfg)$targets_file) {
+  files <- unique(stats::na.omit(files))
+  if (!is_dry_run()) return(files)
+  purrr::map_chr(files, function(url) {
+    group <- names(cfg$target_groups)[purrr::map_chr(
+      cfg$target_groups, \(g) g$targets_file %||% NA_character_
+    ) %in% url][1]
+    # A file outside the store (e.g. a local path) is read as it is.
+    object <- tryCatch(targets_object(cfg, group), error = function(e) NULL)
+    local <- if (!is.null(object)) file.path(dry_run_dir(), object)
+    if (!is.null(local) && file.exists(local)) {
+      cli::cli_inform("DRY RUN: reading {.path {local}} instead of {.url {url}}.")
+      local
+    } else {
+      url
+    }
+  })
+}
+
 #' Put targets in the standard format
 #'
 #' @param targets A data frame with `site_id`, `datetime`, `variable` and

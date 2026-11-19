@@ -1,0 +1,76 @@
+# Run each target group's baseline models and submit their forecasts, for the
+# baselines with the given `schedule` in the config.
+#
+# Reusable: a challenge repository calls it from a short trigger workflow that
+# holds the daily and weekly schedules (see inst/workflows/baselines.yaml in
+# the engine), with `secrets: inherit`.
+name: baseline-forecasts
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: Read real data but write nothing to S3, publish nothing and ping no healthcheck.
+        type: boolean
+        default: false
+      schedule:
+        description: Which baselines to run, `daily` or `weekly`.
+        type: string
+        default: daily
+
+env:
+  DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+  DRY_RUN_DIR: dry-run
+  SCHEDULE: ${{ inputs.schedule }}
+
+jobs:
+  config:
+    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+
+  baselines:
+    needs: config
+    name: ${{ matrix.group }}
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJSON(inputs.schedule == 'weekly' && needs.config.outputs.baselines_weekly || needs.config.outputs.baselines_daily) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: baselines-${{ github.repository }}-${{ matrix.group }}
+      cancel-in-progress: false
+    container:
+      image: ${{ needs.config.outputs.image }}
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      AWS_ACCESS_KEY_SUBMISSIONS: ${{ secrets.AWS_ACCESS_KEY_SUBMISSIONS }}
+      AWS_SECRET_ACCESS_KEY_SUBMISSIONS: ${{ secrets.AWS_SECRET_ACCESS_KEY_SUBMISSIONS }}
+      GROUP: ${{ matrix.group }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: eco4cast/challenge-ci/.github/actions/setup-challenge@main
+
+      - name: Generate and submit forecasts
+        run: Rscript -e 'challengeci::run_stage()' baselines "$SCHEDULE" "$GROUP"
+
+      - name: Keep the dry-run output
+        if: ${{ inputs.dry_run && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-baselines-${{ matrix.group }}
+          path: dry-run/
+          retention-days: 7
+          if-no-files-found: warn
+
+  healthcheck:
+    needs: [config, baselines]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: ${{ needs.config.outputs.image }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: eco4cast/challenge-ci/.github/actions/healthcheck@main
+        with:
+          name: baselines-${{ inputs.schedule }}

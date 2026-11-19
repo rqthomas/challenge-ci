@@ -21,5 +21,9 @@ from the start of each group's \code{focal_sites}.
 leaderboards.
 \item \code{excluded_models}: model ids left out of the plots, per variable, plus
 \code{all} for every variable.
+\item \code{content_dir} (\code{challenge/dashboard}): the challenge's dashboard content
+(see \code{\link[=render_dashboard]{render_dashboard()}}).
+\item \code{extra_pages}: the challenge's own pages for the navbar, each with \code{href}
+(e.g. \code{learn-more.qmd}) and an optional Bootstrap \code{icon}.
 }
 }

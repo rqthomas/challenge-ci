@@ -149,3 +149,13 @@ test_that("a challenge without NOAA drivers gets no NOAA catalog part or link", 
   titles <- vapply(read_json(out, "catalog.json")$links, function(l) l$title %||% "", "")
   expect_false("NOAA Forecasts" %in% titles)
 })
+
+test_that("a collection with no dates has an open-ended interval", {
+  col <- stac_collection("x", "X", "d", links = list(), bbox = c(0, 0, 1, 1),
+                         start = NULL, end = NULL)
+  expect_equal(col$extent$temporal$interval, list(list(NA, NA)))
+  col <- stac_collection("x", "X", "d", links = list(), bbox = c(0, 0, 1, 1),
+                         start = as.Date("2024-01-01"), end = as.Date("2024-02-01"))
+  expect_equal(col$extent$temporal$interval,
+               list(list("2024-01-01T00:00:00Z", "2024-02-01T00:00:00Z")))
+})

@@ -14,35 +14,57 @@
 #' @noRd
 gefs_variables <- c("PRES", "TMP", "RH", "UGRD", "VGRD", "APCP", "DSWRF", "DLWRF")
 
-#' An arrow file system for one NOAA driver product
+#' An arrow file system for reading one NOAA driver product
 #'
-#' For reading, this is the product's folder in the NOAA bucket, anonymous
-#' when no credentials are set. For writing (`write = TRUE`), it is the same
-#' folder with the main store's credentials, or in a dry run a local folder
-#' under [dry_run_dir()]. That way a dry run still reads what exists remotely
-#' but writes nothing there.
+#' The product's folder in the NOAA bucket, read anonymously when no
+#' credentials are set. Writes go through [write_noaa()] instead.
 #'
 #' @inheritParams config_get
 #' @param product Product folder, e.g. `"stage2"`. One of the config's
 #'   `noaa_forecasts$noaa_forecast_group_paths`.
-#' @param write Return a destination to write to.
 #' @return An arrow `SubTreeFileSystem`.
 #' @export
-noaa_store <- function(cfg, product, write = FALSE) {
+noaa_store <- function(cfg, product) {
   rlang::check_installed("arrow")
+  check_noaa_product(cfg, product)
+  arrow_bucket(cfg, "noaa_forecast_bucket", product,
+               anonymous = !has_credentials(cfg, "noaa"))
+}
+
+#' Write to a NOAA driver product through a local folder
+#'
+#' Calls `write` with an empty local folder, then uploads whatever it wrote
+#' there into the product's folder with [upload_dir()], keeping the folder
+#' layout (`reference_datetime=.../site_id=.../part-0.parquet`). Files already
+#' in the product are replaced only where the same file is written again.
+#' Uploading with mc, rather than letting arrow write to S3, is what every
+#' other stage does: it works on OSN, and a dry run sends it to `DRY_RUN_DIR`.
+#'
+#' @inheritParams noaa_store
+#' @param write A function of one argument, the local folder, e.g.
+#'   `\(dir) arrow::write_dataset(df, dir, partitioning = "site_id")`.
+#' @return Whether anything was uploaded, invisibly.
+#' @export
+write_noaa <- function(cfg, product, write) {
+  check_noaa_product(cfg, product)
+  local <- tempfile(paste0("noaa-", product))
+  dir.create(local)
+  on.exit(unlink(local, recursive = TRUE), add = TRUE)
+  write(local)
+  if (length(list.files(local, recursive = TRUE)) == 0) return(invisible(FALSE))
+  if (!is_dry_run()) mc_connect(cfg, "noaa")
+  upload_dir(local, bucket_uri(cfg, "noaa_forecast_bucket", product, scheme = "mc"))
+  invisible(TRUE)
+}
+
+check_noaa_product <- function(cfg, product) {
   products <- unlist(config_get(cfg, "noaa_forecasts", "noaa_forecast_group_paths"))
   if (!product %in% products) {
     cli::cli_abort(
       "{.val {product}} is not one of {.field noaa_forecast_group_paths}: {.val {products}}."
     )
   }
-  if (write && is_dry_run()) {
-    local <- output_uri(bucket_uri(cfg, "noaa_forecast_bucket", product))
-    dir.create(local, recursive = TRUE, showWarnings = FALSE)
-    return(arrow::SubTreeFileSystem$create(local, arrow::LocalFileSystem$create()))
-  }
-  arrow_bucket(cfg, "noaa_forecast_bucket", product,
-               anonymous = !write && !has_credentials(cfg, "noaa"))
+  invisible(product)
 }
 
 #' Sites that driver forecasts are made for
@@ -288,15 +310,25 @@ download_gefs <- function(cfg, product, today = Sys.Date()) {
   log_step("{product}: {length(missing)} missing day{?s}")
   if (length(missing) == 0) return(invisible(missing))
 
-  out <- noaa_store(cfg, product, write = TRUE)
   stage1_sites <- driver_sites(cfg, stage1 = TRUE)
-  switch(product,
-    "stage1-stats" = gefs4cast::gefs_to_parquet(missing, ensemble = c("geavg", "gespr"),
-                                                path = out, sites = stage1_sites),
-    "stage1" = gefs4cast::gefs_to_parquet(missing, path = out, sites = stage1_sites),
-    "pseudo" = gefs4cast::gefs_pseudo_measures(missing, path = out, sites = driver_sites(cfg)),
+  download <- switch(product,
+    "stage1-stats" = function(dates, dir) {
+      gefs4cast::gefs_to_parquet(dates, ensemble = c("geavg", "gespr"), path = dir,
+                                 sites = stage1_sites)
+    },
+    "stage1" = function(dates, dir) {
+      gefs4cast::gefs_to_parquet(dates, path = dir, sites = stage1_sites)
+    },
+    "pseudo" = function(dates, dir) {
+      gefs4cast::gefs_pseudo_measures(dates, path = dir, sites = driver_sites(cfg))
+    },
     cli::cli_abort("Unknown GEFS product {.val {product}}.")
   )
+  # Upload after each day (each 30 days for pseudo, which gefs4cast downloads
+  # in 30-day chunks), so a long backfill keeps what it has done if it stops.
+  chunk_days <- if (product == "pseudo") 30 else 1
+  chunks <- split(missing, ceiling(seq_along(missing) / chunk_days))
+  for (dates in chunks) write_noaa(cfg, product, \(dir) download(dates, dir))
   invisible(missing)
 }
 
@@ -317,8 +349,6 @@ update_stage2 <- function(cfg, days_back = 14, today = Sys.Date()) {
   wanted <- as.character(seq(today - days_back, today - 1, by = "day"))
   missing <- setdiff(wanted, have)
   log_step("Stage 2: {length(missing)} missing day{?s} in the last {days_back}")
-  out <- noaa_store(cfg, "stage2", write = TRUE)
-
   for (date in missing) {
     log_step("Stage 2: {date}")
     stage1 <- noaa_store(cfg, "stage1")$path(paste0("reference_datetime=", date))
@@ -330,7 +360,9 @@ update_stage2 <- function(cfg, days_back = 14, today = Sys.Date()) {
       to_hourly(sites = sites, use_solar_geom = TRUE, psuedo = FALSE) |>
       number_members() |>
       dplyr::mutate(reference_datetime = lubridate::as_date(.data$reference_datetime))
-    arrow::write_dataset(hourly, path = out, partitioning = c("reference_datetime", "site_id"))
+    write_noaa(cfg, "stage2", \(dir) {
+      arrow::write_dataset(hourly, dir, partitioning = c("reference_datetime", "site_id"))
+    })
   }
   invisible(missing)
 }
@@ -353,7 +385,6 @@ update_stage2 <- function(cfg, days_back = 14, today = Sys.Date()) {
 update_stage3 <- function(cfg, overlap_days = 3) {
   sites <- driver_sites(cfg)
   stage3 <- noaa_store(cfg, "stage3")
-  out <- noaa_store(cfg, "stage3", write = TRUE)
   pseudo <- noaa_store(cfg, "pseudo")
 
   results <- purrr::map(sites$site_id, function(site) {
@@ -377,10 +408,10 @@ update_stage3 <- function(cfg, overlap_days = 3) {
       hourly <- new |>
         to_hourly(sites = sites, use_solar_geom = TRUE, psuedo = TRUE) |>
         number_members()
-      hourly |>
+      series <- hourly |>
         dplyr::bind_rows(dplyr::filter(existing, .data$datetime < min(hourly$datetime))) |>
-        dplyr::arrange(.data$variable, .data$datetime, .data$parameter) |>
-        arrow::write_dataset(path = out, partitioning = "site_id")
+        dplyr::arrange(.data$variable, .data$datetime, .data$parameter)
+      write_noaa(cfg, "stage3", \(dir) arrow::write_dataset(series, dir, partitioning = "site_id"))
       tibble::tibble(site_id = site, rows = nrow(hourly), error = NA_character_)
     }, error = function(e) {
       cli::cli_inform(c("x" = "{site} failed: {conditionMessage(e)}"))

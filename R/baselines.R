@@ -369,7 +369,7 @@ run_baselines <- function(cfg, group, schedule = NULL, today = Sys.Date()) {
   }
   vars <- dplyr::filter(target_variables(cfg), .data$group == !!group)
   log_step("{group}: reading targets")
-  targets <- readr::read_csv(unique(vars$targets_file), guess_max = 1e6,
+  targets <- readr::read_csv(targets_files(cfg, vars$targets_file), guess_max = 1e6,
                              show_col_types = FALSE, progress = FALSE)
   theme <- settings$theme %||% tolower(group)
 

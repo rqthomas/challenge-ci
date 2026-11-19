@@ -48,15 +48,23 @@ test_that("ensemble members are numbered", {
   expect_equal(out$parameter, c(0, 30))
 })
 
-test_that("noaa_store() checks the product and writes locally in a dry run", {
+test_that("write_noaa() checks the product and uploads what was written", {
   skip_if_not_installed("arrow")
   cfg <- test_config()
   expect_error(noaa_store(cfg, "stage9"), "noaa_forecast_group_paths")
+  expect_error(write_noaa(cfg, "stage9", \(dir) NULL), "noaa_forecast_group_paths")
   dir <- withr::local_tempdir()
   withr::local_envvar(DRY_RUN = "true", DRY_RUN_DIR = dir)
-  fs <- noaa_store(cfg, "stage2", write = TRUE)
-  expect_true(dir.exists(file.path(dir, "test-bucket/drivers/noaa/gefs-v12/stage2")))
-  expect_equal(fs$ls(), character(0))
+  df <- tibble::tibble(site_id = c("AAAA", "BBBB"), prediction = 1:2)
+  expect_message(
+    write_noaa(cfg, "stage2", \(out) arrow::write_dataset(df, out, partitioning = "site_id")),
+    "DRY RUN"
+  )
+  product <- file.path(dir, "noaa/test-bucket/drivers/noaa/gefs-v12/stage2")
+  expect_setequal(list.files(product), c("site_id=AAAA", "site_id=BBBB"))
+  expect_equal(nrow(arrow::open_dataset(product) |> dplyr::collect()), 2)
+  # Nothing written, nothing uploaded.
+  expect_false(write_noaa(cfg, "stage2", \(out) NULL))
 })
 
 test_that("driver_sites() can use a separate stage 1 site list", {

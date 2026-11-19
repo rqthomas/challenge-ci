@@ -24,6 +24,16 @@ test_that("dashboard settings have defaults the config can override", {
   expect_equal(s$excluded_models$all, "bad")
 })
 
+test_that("extra pages from the config reach the navbar", {
+  cfg <- dashboard_test_config()
+  cfg$dashboard$extra_pages <- list(list(href = "about.qmd", icon = "info"))
+  path <- withr::local_tempfile(fileext = ".yml")
+  write_quarto_metadata(cfg, path)
+  hrefs <- vapply(yaml::read_yaml(path)$website$navbar$left, `[[`, "", "href")
+  expect_equal(hrefs, c("targets.qmd", "instructions.qmd", "performance.qmd", "catalog.qmd",
+                        "about.qmd"))
+})
+
 test_that("weekly variables look back a year, others 30 days", {
   expect_equal(dashboard_lookback_days(c("P1D", "PT30M", "P1W", "P1M")), c(30, 30, 365, 365))
 })
@@ -111,4 +121,26 @@ test_that("stac_browser_url() points at the catalog repository", {
   expect_equal(stac_browser_url(cfg, "sites/collection.json"),
                paste0("https://radiantearth.github.io/stac-browser/#/external/",
                       "raw.githubusercontent.com/org/cat/main/sites/collection.json"))
+})
+
+test_that("dashboard pages call only exported functions", {
+  # Pages run with library(challengeci); internal functions work under
+  # pkgload but fail on the installed package.
+  dir <- system.file("dashboard", package = "challengeci")
+  files <- list.files(dir, "[.](qmd|R)$", recursive = TRUE, full.names = TRUE, all.files = TRUE)
+  text <- unlist(lapply(files, readLines))
+  calls <- unique(unlist(regmatches(
+    text, gregexpr("\\b[A-Za-z_][A-Za-z0-9_.]*(?=\\()", text, perl = TRUE)
+  )))
+  internal <- setdiff(intersect(calls, ls(asNamespace("challengeci"), all.names = TRUE)),
+                      getNamespaceExports("challengeci"))
+  expect_equal(internal, character(0))
+})
+
+test_that("empty dashboard tables bind with real ones", {
+  for (part in c("forecasts", "analysis", "leaderboard")) {
+    expect_equal(nrow(empty_dashboard_table(part)), 0)
+  }
+  expect_true("observation" %in% names(empty_dashboard_table("analysis")))
+  expect_s3_class(empty_dashboard_table("forecasts")$reference_datetime, "POSIXct")
 })

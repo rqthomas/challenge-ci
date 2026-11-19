@@ -1,0 +1,6 @@
+<!-- Default upload instructions. Override with the challenge's own
+     _content/instructions-submit.qmd, e.g. to describe a helper function. -->
+
+Upload the file to the `` `r cfg$submissions_bucket` `` bucket at
+`` `r paste0("https://", cfg$submissions_endpoint)` `` with any S3 client.
+If you need upload access, email `r settings$contact_email`.

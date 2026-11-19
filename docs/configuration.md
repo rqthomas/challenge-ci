@@ -82,6 +82,7 @@ secrets, which the workflows expose as the environment variables named above.
 | Key | Req. | Description | Used by |
 |---|---|---|---|
 | `submissions$exclude_patterns` | | Regular expressions. Keys in the submissions bucket that match any of them are never downloaded or recorded. NEON uses `2023` and `usgsrc4cast`. | submissions |
+| `submissions$known_themes_only` | `false` | If `true`, only files whose name starts with one of the target groups' themes are processed; every other file is left in the bucket untouched. Set it when the submissions bucket is shared with another challenge. | submissions |
 | `submissions$min_reference_date` | | Files whose name dates them before this (`YYYY-MM-DD`) are archived without being processed. | submissions |
 
 A submission file must be named `<theme>-<YYYY-MM-DD>-<model_id>.csv` or `.csv.gz`.
@@ -111,7 +112,7 @@ reading the parallel arrays directly.
 | `variable` | yes | Variables forecast in this group. | all |
 | `duration` | yes | ISO 8601 time step for each variable, parallel to `variable`: `P1D`, `P1W`, `PT30M`, ... | all |
 | `max_horizon` | yes | Longest accepted horizon for each variable, **in days**, parallel to `variable`. Submitted rows further ahead are dropped. | submissions |
-| `targets_script` | | Script the target-generation workflow runs for this group, e.g. `targets/aquatics_targets.R`. A group without one gets no targets job. | workflows |
+| `targets_script` | | Script the target-generation workflow runs for this group, relative to the challenge repository's root, e.g. `challenge/targets/aquatics_targets.R`. A group without one gets no targets job. | workflows |
 | `targets_large_runner` | | `true` to run the group's targets job on `ci$large_runner`. Default `false`. | workflows |
 | `targets_file` | | Public URL of the group's targets CSV, on the main store's `endpoint`. The targets scripts upload to this location. | targets, scoring, baselines, catalog |
 | `thumbnail_link` | | Image for the group's catalog page. | catalog |
@@ -176,13 +177,13 @@ The workflows read these with `yq` in `.github/workflows/_config.yaml`. See
 
 | Key | Description |
 |---|---|
-| `ci$docker_image` | Container image every job runs in, and the image `docker.yaml` builds (also tagged with the build date). Default `eco4cast/rocker-neon4cast:latest`. |
+| `ci$docker_image` | Container image every job runs in: the challenge's own image (built from `challenge/Dockerfile` by the challenge-image workflow, also tagged with the build date), or by default the engine's base image of the release the workflows use. |
 | `ci$large_runner` | Self-hosted runner label for heavy jobs: scoring, stage 3 drivers, and targets groups with `targets_large_runner`. Default `ubuntu-latest`. |
 | `ci$healthchecks` | healthchecks.io ping URLs keyed by job name (`targets`, `targets-<group>`, `baselines-daily`, `baselines-weekly`, `submissions`, `bundling`, `scoring`, `drivers-stage1-2`, `drivers-stage3`, `catalog`, `dashboard`, `docker`). A job without an entry is not monitored. |
 
 ## Dashboard (`dashboard`)
 
-These settings drive the Quarto site in `dashboard/`. All are optional.
+These settings drive the dashboard (`?render_dashboard`). All are optional.
 
 | Key | Description |
 |---|---|
@@ -192,15 +193,16 @@ These settings drive the Quarto site in `dashboard/`. All are optional.
 | `dashboard$n_plot_sites` | Sites per target group in forecast plots, taken from the group's `focal_sites`. Default 2. |
 | `dashboard$leaderboard_max_horizon` | Longest horizon, in days, in the leaderboards. Default 35. |
 | `dashboard$excluded_models` | Model ids left out of the plots, keyed by variable, or `all` for every variable. |
+| `dashboard$content_dir` | The challenge's dashboard content: text partials, target group descriptions, banner and extra pages. Default `challenge/dashboard`. |
+| `dashboard$extra_pages` | The challenge's own pages for the navbar, after the standard ones: a list of `{href: page.qmd, icon: <Bootstrap icon>}`. |
 
-The site title, URL (`challenge_url`, which also sets the sitemap) and
-repository link (`github_repo`) reach Quarto through `dashboard/_challenge.yml`,
-written by `Rscript inst/scripts/dashboard.R`. Each target group's description
-on the "What to forecast" page is `dashboard/_content/targets/<group>.md`.
+The site title, URL (`challenge_url`, which also sets the sitemap), repository
+link (`github_repo`), navbar and banner reach Quarto through `_challenge.yml`,
+which `render_dashboard()` writes into the build.
 
 ## Catalog (`catalog_config`)
 
-These settings drive the STAC catalog built by `inst/scripts/catalog.R`
+These settings drive the STAC catalog built by `run_stage("catalog")`
 (`run_catalog()`).
 
 | Key | Description |

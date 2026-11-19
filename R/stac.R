@@ -29,7 +29,8 @@ stac_extension_urls <- c(
 #' @param id,description Collection id and description.
 #' @param links List of links.
 #' @param bbox Numeric bounding box, from `stac_bbox()`.
-#' @param start,end First and last dates covered.
+#' @param start,end First and last dates covered; `NULL` or `NA` for an
+#'   open-ended range.
 #' @param columns `table:columns` entry, from `stac_columns()`.
 #' @param assets Named list of assets.
 #' @param extensions Names of STAC extensions used: `"table"`,
@@ -81,7 +82,8 @@ stac_collection <- function(id, title, description, links, bbox, start, end,
     title = title,
     extent = list(
       spatial = list(bbox = list(bbox)),
-      temporal = list(interval = list(as.list(stac_datetime(c(start, end)))))
+      temporal = list(interval = list(list(stac_interval_end(start),
+                                           stac_interval_end(end))))
     ),
     `table:columns` = columns,
     assets = assets
@@ -92,6 +94,12 @@ stac_collection <- function(id, title, description, links, bbox, start, end,
 #' @export
 stac_datetime <- function(x) {
   paste0(format(as.Date(x)), "T00:00:00Z")
+}
+
+# One end of a temporal extent: open (JSON null) when unknown.
+stac_interval_end <- function(x) {
+  if (length(x) == 0 || is.na(x)) return(NA)
+  stac_datetime(x)
 }
 
 #' @rdname stac_link

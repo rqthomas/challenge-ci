@@ -86,3 +86,11 @@ test_that("local_duckdb() is separate from, and leaves alone, the shared connect
   expect_false(DBI::dbIsValid(inner))
   expect_true(DBI::dbIsValid(shared))
 })
+
+test_that("open_dataset_if_any() returns NULL for a dataset with no files", {
+  conn <- local_duckdb()
+  dir <- withr::local_tempdir()
+  expect_null(open_dataset_if_any(file.path(dir, "**"), conn = conn))
+  arrow::write_parquet(data.frame(x = 1:3), file.path(dir, "a.parquet"))
+  expect_equal(nrow(dplyr::collect(open_dataset_if_any(file.path(dir, "**"), conn = conn))), 3)
+})

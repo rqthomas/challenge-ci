@@ -7,10 +7,9 @@ config_doc <- function() {
   paste(readLines(path), collapse = "\n")
 }
 
+# A complete challenge config: every key it uses must be documented.
 repo_config <- function() {
-  path <- test_path("..", "..", "challenge_configuration.yaml")
-  skip_if_not(file.exists(path), "not running inside the repository")
-  yaml::read_yaml(path)
+  yaml::read_yaml(test_path("fixtures", "full_config.yaml"))
 }
 
 # Keys missing from the doc. A key counts as documented when it appears in
@@ -33,13 +32,6 @@ test_that("every target group and catalog key is documented", {
   # Keys may appear in a list, e.g. `forecasts_thumbnail`, `scores_thumbnail`.
   keys <- c(group_keys, names(cfg$catalog_config))
   expect_equal(documented(doc, keys), character(0))
-})
-
-test_that("every configured targets script exists", {
-  cfg <- repo_config()
-  scripts <- unlist(lapply(cfg$target_groups, `[[`, "targets_script"))
-  root <- test_path("..", "..")
-  expect_true(all(file.exists(file.path(root, scripts))), info = toString(scripts))
 })
 
 test_that("the workflows are valid YAML", {

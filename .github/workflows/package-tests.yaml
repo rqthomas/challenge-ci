@@ -1,6 +1,6 @@
-# Unit tests and R CMD check for the challengeci package (DESCRIPTION, R/,
-# tests/). Uses no secrets and touches no buckets. The tests also check
-# challenge_configuration.yaml, so they run when the config changes too.
+# Unit tests and R CMD check for the challengeci package. Uses no secrets and
+# touches no buckets. Runs in the engine's base image from main (docker.yaml),
+# which has every dependency; the tests use the checked-out code.
 name: package-tests
 
 on:
@@ -9,30 +9,28 @@ on:
       - 'DESCRIPTION'
       - 'R/**'
       - 'tests/**'
-      - 'challenge_configuration.yaml'
       - 'docs/configuration.md'
-      - '.github/workflows/package-tests.yaml'
       - 'inst/**'
+      - 'AGENTS.md'
+      - '.github/**'
   push:
     branches: [main]
     paths:
       - 'DESCRIPTION'
       - 'R/**'
       - 'tests/**'
-      - 'challenge_configuration.yaml'
       - 'docs/configuration.md'
+      - 'inst/**'
+      - 'AGENTS.md'
+      - '.github/**'
   workflow_dispatch:
 
 jobs:
-  config:
-    uses: ./.github/workflows/_config.yaml
-
   test:
-    needs: config
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container:
-      image: ${{ needs.config.outputs.image }}
+      image: ghcr.io/${{ github.repository }}:main
     steps:
       - uses: actions/checkout@v6
 

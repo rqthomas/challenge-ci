@@ -2,25 +2,20 @@
 % Please edit documentation in R/drivers.R
 \name{noaa_store}
 \alias{noaa_store}
-\title{An arrow file system for one NOAA driver product}
+\title{An arrow file system for reading one NOAA driver product}
 \usage{
-noaa_store(cfg, product, write = FALSE)
+noaa_store(cfg, product)
 }
 \arguments{
 \item{cfg}{Configuration from \code{\link[=read_config]{read_config()}}.}
 
 \item{product}{Product folder, e.g. \code{"stage2"}. One of the config's
 \code{noaa_forecasts$noaa_forecast_group_paths}.}
-
-\item{write}{Return a destination to write to.}
 }
 \value{
 An arrow \code{SubTreeFileSystem}.
 }
 \description{
-For reading, this is the product's folder in the NOAA bucket, anonymous
-when no credentials are set. For writing (\code{write = TRUE}), it is the same
-folder with the main store's credentials, or in a dry run a local folder
-under \code{\link[=dry_run_dir]{dry_run_dir()}}. That way a dry run still reads what exists remotely
-but writes nothing there.
+The product's folder in the NOAA bucket, read anonymously when no
+credentials are set. Writes go through \code{\link[=write_noaa]{write_noaa()}} instead.
 }

@@ -1,0 +1,30 @@
+project:
+  type: website
+  output-dir: docs
+  # Only pages render; the challenge's Markdown and partials in _content/ are
+  # pulled into pages, never rendered on their own.
+  render:
+    - "*.qmd"
+
+# The site title, URL, repository, navbar, banner and footer come from the
+# challenge: render_dashboard() writes them to _challenge.yml.
+metadata-files:
+  - _challenge.yml
+
+website:
+  page-navigation: true
+  repo-actions: [source, issue]
+  navbar:
+    background: primary
+    search: true
+
+format:
+  html:
+    theme: sandstone
+    css: styles.css
+    title-block-style: default
+    title-block-banner-color: white
+    page-layout: full
+    toc: true
+
+editor: source

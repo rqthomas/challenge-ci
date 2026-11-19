@@ -1,0 +1,83 @@
+# Download and clean each target group's observations and publish its targets
+# file: one job per target group with a `targets_script` in the config. A group
+# with `targets_large_runner: true` runs on ci$large_runner.
+#
+# Reusable: a challenge repository calls it from a short trigger workflow that
+# holds the schedule (see inst/workflows/targets.yaml in the engine), with
+# `secrets: inherit`. The targets scripts are the challenge's own.
+name: target-generation
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: Read real data but write nothing to S3, publish nothing and ping no healthcheck.
+        type: boolean
+        default: false
+
+env:
+  DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+  DRY_RUN_DIR: dry-run
+
+jobs:
+  config:
+    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+
+  targets:
+    needs: config
+    name: ${{ matrix.group }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.config.outputs.targets) }}
+    runs-on: ${{ matrix.large && needs.config.outputs.large_runner || 'ubuntu-latest' }}
+    timeout-minutes: ${{ matrix.large && 720 || 360 }}
+    # A group's runs share its caches; never run two at once.
+    concurrency:
+      group: targets-${{ github.repository }}-${{ matrix.group }}
+      cancel-in-progress: false
+    container:
+      image: ${{ needs.config.outputs.image }}
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      OSN_KEY: ${{ secrets.OSN_KEY }}
+      OSN_SECRET: ${{ secrets.OSN_SECRET }}
+      NEON_TOKEN: ${{ secrets.NEON_TOKEN }}
+      EFI_NRP_KEY: ${{ secrets.EFI_NRP_KEY }}
+      EFI_NRP_SECRET: ${{ secrets.EFI_NRP_SECRET }}
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: eco4cast/challenge-ci/.github/actions/setup-challenge@main
+        with:
+          refresh-ca: 'true'
+
+      - name: Generate targets
+        run: Rscript ${{ matrix.script }}
+
+      - name: Keep the dry-run output
+        if: ${{ inputs.dry_run && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-targets-${{ matrix.group }}
+          path: dry-run/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - uses: eco4cast/challenge-ci/.github/actions/healthcheck@main
+        with:
+          name: targets-${{ matrix.group }}
+
+  # Pings only when every group succeeded.
+  healthcheck:
+    needs: [config, targets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: ${{ needs.config.outputs.image }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: eco4cast/challenge-ci/.github/actions/healthcheck@main
+        with:
+          name: targets

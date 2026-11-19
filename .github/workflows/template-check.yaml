@@ -1,0 +1,92 @@
+# Dry-run every stage of the example challenge (challenge-template) with the
+# engine code being changed: a pull request that breaks a real challenge fails
+# here before it is released. Nightly runs also catch changes in the public
+# data the template reads.
+#
+# Runs in the engine's base image from main (docker.yaml) and installs the
+# checked-out package over the copy in the image. DRY_RUN=true: the stages read
+# the real public buckets and write only to dry-run/. Uses no production
+# secrets; the submissions stage needs the submissions key, so it is not run.
+#
+# TEMPLATE_REPO (repository variable) names the template repository; while the
+# template is private (staging), TEMPLATE_TOKEN (secret) is a token that can
+# read it.
+name: template-check
+
+on:
+  pull_request:
+    paths:
+      - 'DESCRIPTION'
+      - 'R/**'
+      - 'inst/**'
+      - '.github/workflows/template-check.yaml'
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: template-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/${{ github.repository }}:main
+    env:
+      DRY_RUN: 'true'
+      DRY_RUN_DIR: dry-run
+    defaults:
+      run:
+        working-directory: template
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: engine
+
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.TEMPLATE_REPO || 'eco4cast/challenge-template' }}
+          token: ${{ secrets.TEMPLATE_TOKEN || github.token }}
+          path: template
+
+      - name: Install the engine from this checkout
+        working-directory: .
+        run: R CMD INSTALL --no-test-load engine
+
+      - name: check
+        run: Rscript -e 'challengeci::run_stage()' check
+
+      - name: targets
+        run: |
+          scripts=$(Rscript -e 'cat(unlist(lapply(challengeci::read_config()$target_groups, `[[`, "targets_script")), sep = "\n")')
+          for script in $scripts; do
+            echo "::group::$script"
+            Rscript "$script"
+            echo "::endgroup::"
+          done
+
+      - name: baselines
+        run: Rscript -e 'challengeci::run_stage()' baselines daily
+
+      - name: bundle
+        run: Rscript -e 'challengeci::run_stage()' bundle
+
+      - name: score
+        run: Rscript -e 'challengeci::run_stage()' score
+
+      - name: catalog
+        run: Rscript -e 'challengeci::run_stage()' catalog
+
+      - name: dashboard
+        run: Rscript -e 'challengeci::run_stage()' dashboard site
+
+      - name: Keep the dry-run output
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-dry-run
+          path: template/dry-run/
+          retention-days: 7
+          if-no-files-found: warn

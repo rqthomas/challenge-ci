@@ -102,8 +102,20 @@ catalog_dir <- function(cfg) {
   file.path("..", config_get(cfg, "catalog_config", "catalog_path"))
 }
 
-# Folder of one part inside the catalog. The config's *_path settings start
-# with the catalog folder name (e.g. neon4cast-catalog/forecasts).
+#' Folder of one part of the catalog
+#'
+#' The config's `catalog_config$*_path` settings start with the catalog folder
+#' name (e.g. `neon4cast-catalog/forecasts`); this returns the part inside the
+#' catalog (`forecasts`), as used in catalog URLs.
+#'
+#' @inheritParams config_get
+#' @param key Name of the `catalog_config` setting, e.g. `"summaries_path"`.
+#' @param default Folder to use when the setting is missing.
+#' @return A relative folder path.
+#' @export
+#' @examples
+#' cfg <- list(catalog_config = list(catalog_path = "cat", scores_path = "cat/scores"))
+#' catalog_subdir(cfg, "scores_path", "scores")
 catalog_subdir <- function(cfg, key, default) {
   path <- cfg$catalog_config[[key]] %||% default
   path <- sub("/+$", "", path)
@@ -173,7 +185,17 @@ catalog_inventory <- function(cfg, key, folder, conn = duckdbfs::cached_connecti
   durations <- unique(target_variables(cfg)$duration)
   uri <- bucket_uri(cfg, key, folder, paste0("project_id=", cfg$project_id))
   t0 <- Sys.time()
-  inventory <- duckdbfs::open_dataset(uri, conn = conn) |>
+  dataset <- open_dataset_if_any(uri, conn = conn)
+  if (is.null(dataset)) {
+    # A new challenge: nothing bundled yet.
+    log_step("Inventory of {.path {uri}}: no data yet")
+    time <- as.POSIXct(character(), tz = "UTC")
+    return(tibble::tibble(model_id = character(), variable = character(),
+                          duration = character(), site_id = character(),
+                          first = time, last = time, last_reference = time,
+                          last_pub = time))
+  }
+  inventory <- dataset |>
     dplyr::filter(.data$duration %in% !!durations, !is.na(.data$model_id)) |>
     dplyr::summarise(
       first = min(.data$datetime, na.rm = TRUE),
@@ -280,15 +302,21 @@ build_model_collection <- function(kind, cfg, inventory, sites, registered, vari
   # further, and older scores lack pub_datetime.
   keys <- c("model_id", "variable", "duration")
   both <- dplyr::bind_rows(inv, inventory$scores)
-  first <- dplyr::summarise(both, first = min(.data$first), .by = dplyr::all_of(keys))
-  pub <- both |>
-    dplyr::filter(!is.na(.data$last_pub)) |>
-    dplyr::summarise(last_pub = max(.data$last_pub), .by = dplyr::all_of(keys))
-  models <- inv |>
-    dplyr::summarise(last = max(.data$last), last_reference = max(.data$last_reference),
-                     .by = dplyr::all_of(keys)) |>
-    dplyr::left_join(first, by = keys) |>
-    dplyr::left_join(pub, by = keys)
+  models <- if (nrow(inv) == 0) {
+    # A new challenge: no models yet (summarise would warn on zero rows).
+    dplyr::mutate(inv[keys], last = inv$last, last_reference = inv$last_reference,
+                  first = inv$first, last_pub = inv$last_pub)
+  } else {
+    first <- dplyr::summarise(both, first = min(.data$first), .by = dplyr::all_of(keys))
+    pub <- both |>
+      dplyr::filter(!is.na(.data$last_pub)) |>
+      dplyr::summarise(last_pub = max(.data$last_pub), .by = dplyr::all_of(keys))
+    inv |>
+      dplyr::summarise(last = max(.data$last), last_reference = max(.data$last_reference),
+                       .by = dplyr::all_of(keys)) |>
+      dplyr::left_join(first, by = keys) |>
+      dplyr::left_join(pub, by = keys)
+  }
   model_sites <- inv |>
     dplyr::filter(.data$site_id %in% sites$site_id) |>
     dplyr::distinct(.data$model_id, .data$variable, .data$duration, .data$site_id) |>
@@ -318,8 +346,10 @@ build_model_collection <- function(kind, cfg, inventory, sites, registered, vari
       purrr::map(groups, function(g) stac_link("child", paste0(g, "/collection.json"), title = g)),
       stac_standard_links(cfg, parent = "../catalog.json", root = "../catalog.json")
     ),
-    bbox = stac_bbox(sites, all_sites),
-    start = min(models$first), end = max(models$last),
+    # With no models yet: every site, and an open-ended date range.
+    bbox = stac_bbox(sites, all_sites) %||% stac_bbox(sites),
+    start = if (nrow(models) > 0) min(models$first),
+    end = if (nrow(models) > 0) max(models$last),
     columns = ctx$columns,
     assets = purrr::compact(list(
       data = parquet_asset(public_s3_uri(cfg, spec$bucket, spec$folder,
@@ -684,7 +714,7 @@ first_parquet_file <- function(fs, path) {
 #' @return A list with `start`, `end` and `schema` (from the first file).
 #' @export
 targets_summary <- function(cfg) {
-  files <- unique(stats::na.omit(target_variables(cfg)$targets_file))
+  files <- targets_files(cfg)
   datetimes <- readr::read_csv(files, col_select = "datetime", show_col_types = FALSE,
                                progress = FALSE)$datetime
   sample <- readr::read_csv(files[1], n_max = 1000, show_col_types = FALSE, progress = FALSE)

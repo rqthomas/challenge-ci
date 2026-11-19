@@ -19,3 +19,5 @@
 ^manuscript$
 ^targets$
 ^AGENTS\.md$
+^\.dockerignore$
+^CHANGELOG\.md$

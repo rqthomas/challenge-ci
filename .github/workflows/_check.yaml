@@ -1,0 +1,26 @@
+# Check a challenge repository: its config, and that every file the config
+# names exists (challengeci::check_challenge_repo()). Writes nothing and needs
+# no secrets.
+#
+# Reusable: a challenge repository calls it from a short trigger workflow (see
+# inst/workflows/check.yaml in the engine), on pull requests and pushes.
+name: check
+
+on:
+  workflow_call:
+
+jobs:
+  config:
+    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+
+  check:
+    needs: config
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: ${{ needs.config.outputs.image }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check the challenge repository
+        run: Rscript -e 'challengeci::run_stage()' check

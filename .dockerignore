@@ -1,0 +1,8 @@
+# Only the package goes into the image.
+*
+!DESCRIPTION
+!NAMESPACE
+!LICENSE
+!R
+!man
+!inst

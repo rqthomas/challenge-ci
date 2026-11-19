@@ -1,0 +1,7 @@
+<!-- Default examples section. Override with the challenge's own
+     _content/instructions-examples.qmd, e.g. to show real example files. -->
+
+### Example forecasts
+
+The baseline forecasts the challenge submits every day are complete examples
+of the format; find them in the [forecast catalog](`r links$forecasts`).

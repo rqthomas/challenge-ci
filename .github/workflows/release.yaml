@@ -1,0 +1,105 @@
+# Release a version of the engine. Run by hand with a version such as 0.4.0
+# (or 0.4.0-rc.1 for a release candidate). From the current main it:
+#   1. sets the package version in DESCRIPTION;
+#   2. rewrites every engine reference in the reusable workflows, actions and
+#      challenge trigger templates (inst/workflows),
+#      eco4cast/challenge-ci/...@main, to <this repo>/...@v<version>, and the
+#      default image ghcr.io/eco4cast/challenge-ci:main to :v<version>;
+#   3. commits that and tags it v<version> (main itself is not changed);
+#   4. builds and pushes the base image ghcr.io/<this repo>:v<version>;
+#   5. creates the GitHub release, with notes from CHANGELOG.md.
+# So a challenge that calls `.../_scoring.yaml@v0.4.0` runs package 0.4.0 in
+# image 0.4.0. Because the owner comes from this repository, the same workflow
+# works in a staging copy under another account.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, e.g. 0.4.0 or 0.4.0-rc.1
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check the version
+        run: |
+          set -euo pipefail
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'; then
+            echo "::error::Version must look like 0.4.0 or 0.4.0-rc.1"; exit 1
+          fi
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag v$VERSION already exists"; exit 1
+          fi
+
+      - name: Stamp the version
+        run: |
+          set -euo pipefail
+          repo=$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          # R package versions cannot carry the -rc suffix.
+          sed -i -E "s/^Version: .*/Version: ${VERSION%%-*}/" DESCRIPTION
+          files=$(ls .github/workflows/_*.yaml .github/actions/*/action.yml inst/workflows/*.yaml)
+          sed -i -E \
+            -e "s#eco4cast/challenge-ci/(\.github/[^@ ]+)@main#${GITHUB_REPOSITORY}/\1@v${VERSION}#g" \
+            -e "s#ghcr\.io/eco4cast/challenge-ci:main#ghcr.io/${repo}:v${VERSION}#g" \
+            $files
+          if grep -nE "uses: .*challenge-ci/.*@main|challenge-ci:main" $files; then
+            echo "::error::Unstamped references remain"; exit 1
+          fi
+
+      - name: Commit and tag
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git commit -am "Release v$VERSION"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Image name
+        id: image
+        run: echo "name=$(echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]'):v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the base image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.name }}
+          secrets: |
+            github_pat=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Notes: the CHANGELOG.md section for this version, if there is one.
+          awk -v v="## v${VERSION%%-*}" '$0 ~ "^## " {p = ($0 == v)} p' CHANGELOG.md > notes.md || true
+          [ -s notes.md ] || echo "Release v$VERSION" > notes.md
+          prerelease=$(case "$VERSION" in *-*) echo --prerelease;; esac)
+          gh release create "v$VERSION" --title "v$VERSION" --notes-file notes.md $prerelease

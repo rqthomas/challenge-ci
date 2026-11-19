@@ -1,0 +1,6 @@
+<!-- Default section on automating forecasts. Override with the challenge's own
+     _content/instructions-automation.qmd. -->
+
+Any scheduler works; GitHub Actions is a common choice. The container image
+`` `r cfg$ci$docker_image %||% "eco4cast/challenge-ci"` `` has the R packages
+the challenge itself uses.

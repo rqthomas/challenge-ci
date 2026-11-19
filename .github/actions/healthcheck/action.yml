@@ -17,4 +17,4 @@ runs:
       env:
         HEALTHCHECK: ${{ inputs.name }}
       run: |
-        Rscript -e 'pkgload::load_all(quiet = TRUE); ping_healthcheck(read_config(), Sys.getenv("HEALTHCHECK"))'
+        Rscript -e 'challengeci::ping_healthcheck(challengeci::read_config(), Sys.getenv("HEALTHCHECK"))'

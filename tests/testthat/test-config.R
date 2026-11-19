@@ -1,6 +1,5 @@
-test_that("the repository's own config is valid", {
-  path <- test_path("..", "..", "challenge_configuration.yaml")
-  skip_if_not(file.exists(path), "not running inside the repository")
+test_that("a complete challenge config is valid", {
+  path <- test_path("fixtures", "full_config.yaml")
   cfg <- read_config(path)
   expect_equal(nrow(config_problems(cfg)), 0)
   expect_equal(cfg$project_id, "neon4cast")

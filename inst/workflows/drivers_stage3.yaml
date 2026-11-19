@@ -1,0 +1,29 @@
+# Trigger for the engine's drivers-stage3 workflow. Copy into .github/workflows/ of a
+# challenge repository; set the schedule, and the engine version after @.
+name: drivers-stage3
+
+on:
+  schedule:
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: read real data, write nothing (output kept as an artifact)'
+        type: boolean
+        default: false
+      rebuild:
+        description: Rebuild stage 3 from all pseudo data (slow)
+        type: boolean
+        default: false
+
+concurrency:
+  group: drivers-stage3
+  cancel-in-progress: false
+
+jobs:
+  run:
+    uses: eco4cast/challenge-ci/.github/workflows/_drivers_stage3.yaml@main
+    with:
+      dry_run: ${{ inputs.dry_run || false }}
+      rebuild: ${{ inputs.rebuild || false }}
+    secrets: inherit

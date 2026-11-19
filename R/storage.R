@@ -232,6 +232,18 @@ store_bucket <- function(cfg, store) {
   strsplit(path, "/", fixed = TRUE)[[1]][1]
 }
 
+# Open a dataset with duckdbfs, or return NULL if it has no files yet (a new
+# challenge, or a query that wrote nothing). Other errors are raised.
+open_dataset_if_any <- function(uri, conn = duckdbfs::cached_connection(), ...) {
+  tryCatch(
+    duckdbfs::open_dataset(uri, conn = conn, ...),
+    error = function(e) {
+      if (grepl("No files found", conditionMessage(e), fixed = TRUE)) return(NULL)
+      stop(e)
+    }
+  )
+}
+
 #' A separate duckdb connection for one unit of work
 #'
 #' Opens a new disk-backed duckdb connection, which spills to disk instead of

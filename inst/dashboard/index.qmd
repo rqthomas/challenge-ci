@@ -1,0 +1,52 @@
+---
+title: "Forecasting Challenge"
+---
+
+```{r setup}
+#| include: false
+source("R/setup.R")
+library(bslib)
+library(bsicons)
+stats <- jsonlite::read_json(data_file("stats.json"))
+years <- as.numeric(as.Date(stats$targets_end) - as.Date(stats$targets_start)) / 365
+```
+
+{{< include _content/home.qmd >}}
+
+<br /> <br />
+
+```{r}
+layout_column_wrap(
+  width = "250px",
+  value_box(
+    title = paste("Total forecasts submitted to the", cfg$project_id, "Challenge"),
+    value = format(stats$n_forecasts, big.mark = ","),
+    showcase = bs_icon("graph-up"),
+    theme = "success"
+  ),
+  value_box(
+    title = "Most recent data for model training",
+    value = stats$targets_end,
+    showcase = bs_icon("bullseye"),
+    theme = "info"
+  ),
+  value_box(
+    title = "Number of years of data for model training",
+    value = round(years, 2),
+    showcase = bs_icon("bullseye"),
+    theme = "info"
+  ),
+  value_box(
+    title = "Number of variables being forecasted",
+    value = stats$n_variables,
+    showcase = bs_icon("clipboard-data"),
+    theme = "success"
+  )
+)
+```
+
+<br /> <br />
+
+{{< include _content/home-more.qmd >}}
+
+<br /> <br /> Page last updated on `r stats$updated`

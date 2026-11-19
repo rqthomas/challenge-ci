@@ -11,6 +11,11 @@
 # anonymous alias once NRP restores the key's permissions. Operators: see
 # "The submissions bucket workaround" in docs/operations.md.
 
+# The file-name themes of the challenge's target groups.
+challenge_themes <- function(cfg) {
+  unname(purrr::imap_chr(cfg$target_groups, \(g, group) g$theme %||% tolower(group)))
+}
+
 # minio client aliases used for the submissions bucket.
 submissions_alias <- "submissions"
 submissions_public_alias <- "submissions_public"
@@ -57,15 +62,26 @@ write_manifest <- function(cfg, keys) {
 #' @param exclude_patterns Regular expressions. Keys matching any of them are
 #'   never downloaded or recorded (`submissions$exclude_patterns` in the
 #'   config).
+#' @param themes If given, only keys whose file name starts with one of these
+#'   themes (`<theme>-<date>-<model_id>`) are downloaded; all others are left
+#'   alone like excluded ones. Set from the target groups' themes when the
+#'   config has `submissions$known_themes_only: true`, so that challenges can
+#'   share a submissions bucket.
 #' @return A list with `download` (new keys), `stale` (processed keys still in
 #'   the bucket, to delete) and `n_excluded`.
 #' @export
 #' @examples
 #' plan_submissions(c("a.csv", "b.csv", "old-2023.csv"), processed = "a.csv",
 #'                  exclude_patterns = "2023")
-plan_submissions <- function(keys, processed, exclude_patterns = character()) {
+#' plan_submissions(c("lakes-2026-01-01-m.csv", "aquatics-2026-01-01-m.csv"),
+#'                  processed = character(), themes = "lakes")
+plan_submissions <- function(keys, processed, exclude_patterns = character(),
+                             themes = NULL) {
   excluded <- rep(FALSE, length(keys))
   for (pattern in exclude_patterns) excluded <- excluded | grepl(pattern, keys)
+  if (!is.null(themes)) {
+    excluded <- excluded | !parse_submission_filename(keys)$theme %in% themes
+  }
   wanted <- keys[!excluded]
   list(
     download = setdiff(wanted, processed),
@@ -172,7 +188,8 @@ run_submissions <- function(cfg) {
   plan <- plan_submissions(
     keys, processed,
     exclude_patterns = unlist(config_get(cfg, "submissions", "exclude_patterns",
-                                         default = character()))
+                                         default = character())),
+    themes = if (isTRUE(cfg$submissions$known_themes_only)) challenge_themes(cfg)
   )
   log_step(
     "{length(keys)} object{?s} in the bucket: {plan$n_excluded} excluded, ",

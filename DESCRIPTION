@@ -31,19 +31,21 @@ Imports:
     tibble,
     tools,
     utils,
+    withr,
     yaml
 Suggests:
     arrow,
     fable,
     fabletools,
+    gdalcubes,
     gefs4cast,
     imputeTS,
+    parallel,
     score4cast,
     scoringRules,
     testthat (>= 3.0.0),
     tidyr,
-    tsibble,
-    withr
+    tsibble
 Remotes:
     eco4cast/gefs4cast,
     eco4cast/score4cast

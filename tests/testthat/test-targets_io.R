@@ -61,3 +61,19 @@ test_that("write_targets() uploads to the targets file's location", {
                              show_col_types = FALSE)
   expect_equal(nrow(written), nrow(targets))
 })
+
+test_that("targets_files() reads an earlier dry run's targets in a dry run", {
+  cfg <- test_config()
+  url <- cfg$target_groups$Lakes$targets_file
+  dir <- withr::local_tempdir()
+  withr::local_envvar(DRY_RUN = "false", DRY_RUN_DIR = dir)
+  expect_equal(targets_files(cfg), url)
+
+  withr::local_envvar(DRY_RUN = "true")
+  expect_equal(targets_files(cfg), url)  # nothing written yet
+  local <- file.path(dir, "main/test-bucket/lakes-targets.csv.gz")
+  dir.create(dirname(local), recursive = TRUE)
+  file.create(local)
+  expect_message(files <- targets_files(cfg), "DRY RUN")
+  expect_equal(files, local)
+})

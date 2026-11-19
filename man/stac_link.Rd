@@ -49,7 +49,8 @@ write_stac(x, path)
 
 \item{bbox}{Numeric bounding box, from \code{stac_bbox()}.}
 
-\item{start, end}{First and last dates covered.}
+\item{start, end}{First and last dates covered; \code{NULL} or \code{NA} for an
+open-ended range.}
 
 \item{columns}{\code{table:columns} entry, from \code{stac_columns()}.}
 

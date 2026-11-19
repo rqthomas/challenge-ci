@@ -47,3 +47,11 @@ test_that("files that cannot be processed are skipped with a reason", {
   expect_match(skip_reason("lakes-2024-03-01-m.parquet"), "parquet")
   expect_match(skip_reason("lakes-2023-12-31-m.csv"), "before 2024-01-01")
 })
+
+test_that("plan_submissions() can keep to the challenge's own themes", {
+  keys <- c("lakes-2026-01-01-m1.csv", "aquatics-2026-01-01-m1.csv", "notes.txt")
+  plan <- plan_submissions(keys, processed = character(), themes = "lakes")
+  expect_equal(plan$download, "lakes-2026-01-01-m1.csv")
+  expect_equal(plan$n_excluded, 2)
+  expect_equal(challenge_themes(test_config()), c("lakes", "birds"))
+})

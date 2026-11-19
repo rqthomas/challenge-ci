@@ -67,7 +67,7 @@ prepare_scoring <- function(cfg, since = Sys.Date() - lubridate::dmonths(6),
   project <- cfg$project_id
 
   targets <- duckdbfs::open_dataset(
-    unique(stats::na.omit(target_variables(cfg)$targets_file)),
+    targets_files(cfg),
     format = "csv", recursive = FALSE, conn = conn,
     parser_options = list(nullstr = "NA")
   ) |>
@@ -98,27 +98,43 @@ prepare_scoring <- function(cfg, since = Sys.Date() - lubridate::dmonths(6),
   # Copying the subsets to scratch first, then joining the copies, is much
   # faster and lighter on memory than joining the remote datasets directly.
   log_step("Copying forecasts, scores and targets to scratch")
+  # Each copy is NULL when it has no rows: duckdb writes no files for an empty
+  # result, so there is nothing to open (a new challenge, or all scored).
   copy <- function(data, folder) {
     data |>
       dplyr::group_by(.data$variable) |>
       duckdbfs::write_dataset(scratch_uri(cfg, folder), conn = conn)
-    duckdbfs::open_dataset(scratch_uri(cfg, folder, "**"), conn = conn)
+    open_scratch(cfg, folder, conn)
   }
   forecasts <- copy(forecasts, "forecasts")
   scores <- copy(dplyr::select(scores, dplyr::all_of(score_key_cols)), "scores")
   targets <- copy(targets, "targets")
+  nothing <- tibble::tibble(project_id = character(), duration = character(),
+                            variable = character(), model_id = character(),
+                            family = character())
+  if (is.null(forecasts) || is.null(targets)) {
+    log_step("No forecasts with observations in the window; nothing to score")
+    return(nothing)
+  }
 
   log_step("Finding unscored forecasts with observations")
+  if (!is.null(scores)) forecasts <- dplyr::anti_join(forecasts, scores, by = score_key_cols)
   forecasts |>
-    dplyr::anti_join(scores, by = score_key_cols) |>
     dplyr::inner_join(targets, by = obs_key_cols) |>
     dplyr::group_by(.data$variable, .data$model_id) |>
     duckdbfs::write_dataset(scratch_uri(cfg, "score_me"), conn = conn)
 
-  duckdbfs::open_dataset(scratch_uri(cfg, "score_me", "**"), conn = conn) |>
+  score_me <- open_scratch(cfg, "score_me", conn)
+  if (is.null(score_me)) return(nothing)
+  score_me |>
     dplyr::distinct(.data$project_id, .data$duration, .data$variable,
                     .data$model_id, .data$family) |>
     dplyr::collect()
+}
+
+# Open a scratch folder written by duckdb; NULL if the write produced no files.
+open_scratch <- function(cfg, folder, conn) {
+  open_dataset_if_any(scratch_uri(cfg, folder, "**"), conn = conn)
 }
 
 # Delete one scratch folder. Scratch is temporary, so a missing folder is fine.

@@ -1,0 +1,71 @@
+# Build the challenge's dashboard (the engine's template plus the challenge's
+# content, see ?challengeci::render_dashboard) and publish it to the
+# challenge repository's gh-pages branch.
+#
+# Reusable: a challenge repository calls it from a short trigger workflow (see
+# inst/workflows/dashboard.yaml in the engine), with `secrets: inherit` and
+# `permissions: contents: write` so it can push to gh-pages.
+name: dashboard
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: Build the site but publish nothing and ping no healthcheck.
+        type: boolean
+        default: false
+
+env:
+  DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+  DRY_RUN_DIR: dry-run
+
+jobs:
+  config:
+    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+
+  dashboard:
+    needs: config
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ${{ needs.config.outputs.image }}
+    steps:
+      - run: git config --system --add safe.directory '*'
+
+      # Full history: the publish step checks out the gh-pages branch.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # Quarto comes with the image.
+      - name: Build the dashboard
+        run: Rscript -e 'challengeci::run_stage()' dashboard site
+
+      - name: Keep the built site
+        if: ${{ inputs.dry_run && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-dashboard
+          path: site/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Publish to gh-pages
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git checkout gh-pages
+          cp -r site/* .
+          rm -rf site
+          git add .
+          git commit -m "update pages" || echo "nothing to commit"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}"
+          # Back to the code branch, for the healthcheck step.
+          git checkout -
+
+      - uses: eco4cast/challenge-ci/.github/actions/healthcheck@main
+        with:
+          name: dashboard

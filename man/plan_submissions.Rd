@@ -4,7 +4,12 @@
 \alias{plan_submissions}
 \title{Decide which submissions to download}
 \usage{
-plan_submissions(keys, processed, exclude_patterns = character())
+plan_submissions(
+  keys,
+  processed,
+  exclude_patterns = character(),
+  themes = NULL
+)
 }
 \arguments{
 \item{keys}{Every key in the submissions bucket.}
@@ -14,6 +19,12 @@ plan_submissions(keys, processed, exclude_patterns = character())
 \item{exclude_patterns}{Regular expressions. Keys matching any of them are
 never downloaded or recorded (\code{submissions$exclude_patterns} in the
 config).}
+
+\item{themes}{If given, only keys whose file name starts with one of these
+themes (\verb{<theme>-<date>-<model_id>}) are downloaded; all others are left
+alone like excluded ones. Set from the target groups' themes when the
+config has \code{submissions$known_themes_only: true}, so that challenges can
+share a submissions bucket.}
 }
 \value{
 A list with \code{download} (new keys), \code{stale} (processed keys still in
@@ -25,4 +36,6 @@ Decide which submissions to download
 \examples{
 plan_submissions(c("a.csv", "b.csv", "old-2023.csv"), processed = "a.csv",
                  exclude_patterns = "2023")
+plan_submissions(c("lakes-2026-01-01-m.csv", "aquatics-2026-01-01-m.csv"),
+                 processed = character(), themes = "lakes")
 }

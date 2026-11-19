@@ -44,6 +44,9 @@ read_config <- function(path = config_path(), validate = TRUE) {
   # Defaults that depend on other settings.
   cfg$summaries_bucket <- cfg$summaries_bucket %||% cfg$forecasts_bucket
   if (validate) validate_config(cfg)
+  # Remembered so that steps run in another process (the dashboard pages)
+  # read the same file.
+  attr(cfg, "path") <- normalizePath(path)
   cfg
 }
 

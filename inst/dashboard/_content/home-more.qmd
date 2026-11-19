@@ -1,0 +1,10 @@
+<!-- Default end of the home page. A challenge replaces it with its own
+     _content/home-more.qmd in its dashboard folder. -->
+
+## Contact
+
+`r settings$contact_email`
+
+## Citation
+
+`r cfg$catalog_config$citation_text`

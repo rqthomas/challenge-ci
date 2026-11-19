@@ -1,0 +1,45 @@
+# Download today's GEFS forecasts (stage 1) and interpolate them to hourly (stage 2).
+#
+# Reusable: a challenge repository calls it from a short trigger workflow that
+# holds the schedule (see inst/workflows/drivers_stage1_2.yaml in the engine), with
+# `secrets: inherit`. Engine actions and workflows are referenced by full name;
+# the release workflow rewrites eco4cast/challenge-ci@main to the release.
+name: drivers-stage1-2
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: Read real data but write nothing to S3, publish nothing and ping no healthcheck.
+        type: boolean
+        default: false
+
+env:
+  DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+  DRY_RUN_DIR: dry-run
+
+jobs:
+  config:
+    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+
+  drivers:
+    needs: config
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    container:
+      image: ${{ needs.config.outputs.image }}
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      OSN_KEY: ${{ secrets.OSN_KEY }}
+      OSN_SECRET: ${{ secrets.OSN_SECRET }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: eco4cast/challenge-ci/.github/actions/setup-challenge@main
+
+      - name: Download GEFS and generate stage 2
+        run: Rscript -e 'challengeci::run_stage()' drivers-stage1-2
+
+      - uses: eco4cast/challenge-ci/.github/actions/healthcheck@main
+        with:
+          name: drivers-stage1-2

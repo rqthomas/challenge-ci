@@ -1,29 +1,32 @@
-# Build the challenge image (ci$docker_image in the config) and push it to
-# Docker Hub and GHCR as `latest` and as a dated tag (e.g. 2026-11-18) that is
-# never overwritten, so a run can be pinned to, or rolled back to, a known image.
-name: docker container
+# Build the engine's base image (R, the engine's dependencies and the
+# challengeci package itself) and push it to GHCR as
+# ghcr.io/<owner>/challenge-ci:main, plus a dated tag that is never overwritten.
+# Releases build their own version tag (release.yaml).
+name: base-image
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'DESCRIPTION'
+      - 'R/**'
+      - 'inst/**'
+  schedule:
+    - cron: '0 0 * * 0'
   workflow_dispatch:
     inputs:
       dry_run:
         description: 'Dry run: build the image without pushing it'
         type: boolean
         default: false
-  schedule:
-    - cron: '0 0 * * *'
-  push:
-    branches:
-      - 'main'
-    paths:
-      - 'Dockerfile'
 
 concurrency:
-  group: docker
+  group: base-image
   cancel-in-progress: false
 
 jobs:
-  docker:
+  image:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -32,37 +35,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # yq is preinstalled on GitHub's Ubuntu runners.
       - name: Image names
         id: names
         run: |
-          image=$(yq '.ci.docker_image // "eco4cast/rocker-neon4cast:latest"' challenge_configuration.yaml)
-          repo=${image%:*}
-          today=$(date -u +%Y-%m-%d)
+          repo=$(echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
           {
             echo "tags<<EOF"
-            echo "${repo}:latest"
-            echo "${repo}:${today}"
-            echo "ghcr.io/${repo}:latest"
-            echo "ghcr.io/${repo}:${today}"
+            echo "${repo}:main"
+            echo "${repo}:main-$(date -u +%Y-%m-%d)"
             echo "EOF"
-            echo "healthcheck=$(yq '.ci.healthchecks.docker // ""' challenge_configuration.yaml)"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -72,14 +58,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          # A dry run only checks that the image builds.
           push: ${{ !inputs.dry_run }}
           tags: ${{ steps.names.outputs.tags }}
-          # Mounted only while the GitHub installs run (see Dockerfile); not
-          # stored in the image.
+          # Mounted only while the GitHub installs run (see Dockerfile).
           secrets: |
-            github_pat=${{ secrets.PAT }}
-
-      - name: Healthcheck
-        if: steps.names.outputs.healthcheck != '' && !inputs.dry_run
-        run: curl -m 10 --retry 5 "${{ steps.names.outputs.healthcheck }}"
+            github_pat=${{ secrets.GITHUB_TOKEN }}

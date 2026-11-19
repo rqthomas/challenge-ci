@@ -1,0 +1,79 @@
+# Build the challenge's STAC catalog and model metadata, and commit the catalog
+# to its catalog repository (catalog_config$catalog_repo).
+#
+# Reusable: a challenge repository calls it from a short trigger workflow (see
+# inst/workflows/catalog.yaml in the engine), with `secrets: inherit`. Needs
+# the CATALOG_TOKEN secret: a token that can push to the catalog repository.
+name: catalog
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: Read real data but write nothing to S3, push nothing and ping no healthcheck.
+        type: boolean
+        default: false
+
+env:
+  DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+  DRY_RUN_DIR: dry-run
+
+jobs:
+  config:
+    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+
+  catalog:
+    needs: config
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ${{ needs.config.outputs.image }}
+      options: --memory 15120m
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      EXTERNAL_GH_PAT: ${{ secrets.CATALOG_TOKEN }}
+      OSN_KEY: ${{ secrets.OSN_KEY }}
+      OSN_SECRET: ${{ secrets.OSN_SECRET }}
+    steps:
+      - run: git config --system --add safe.directory '*'
+
+      - uses: actions/checkout@v6
+
+      - uses: eco4cast/challenge-ci/.github/actions/setup-challenge@main
+
+      # The catalog is written to ../<catalog_config$catalog_path>, a clone of
+      # catalog_config$catalog_repo.
+      - name: Clone the catalog repository
+        run: |
+          repo=$(Rscript -e 'cat(yaml::read_yaml("challenge_configuration.yaml")$catalog_config$catalog_repo)')
+          dir=$(Rscript -e 'cat(yaml::read_yaml("challenge_configuration.yaml")$catalog_config$catalog_path)')
+          git clone --depth 1 "https://github.com/${repo}.git" "../${dir}"
+          echo "CATALOG_REPO=${repo}" >> "$GITHUB_ENV"
+          echo "CATALOG_DIR=../${dir}" >> "$GITHUB_ENV"
+
+      - name: Build catalog and model metadata
+        run: Rscript -e 'challengeci::run_stage()' catalog
+
+      - name: Commit and push
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd "$CATALOG_DIR"
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add -A .
+          git commit -m "update catalog" || echo "nothing to commit"
+          git pull --rebase
+          git push "https://${EXTERNAL_GH_PAT}:${EXTERNAL_GH_PAT}@github.com/${CATALOG_REPO}"
+
+      - name: Keep the dry-run output
+        if: ${{ inputs.dry_run && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-catalog
+          path: dry-run/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - uses: eco4cast/challenge-ci/.github/actions/healthcheck@main
+        with:
+          name: catalog

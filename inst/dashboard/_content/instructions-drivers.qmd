@@ -1,0 +1,13 @@
+<!-- Default section on weather drivers. Override with the challenge's own
+     _content/instructions-drivers.qmd. -->
+
+```{r}
+#| echo: false
+#| results: asis
+if (!is.null(cfg$noaa_forecasts)) {
+  cat("If you want to use forecasted meteorology, we download and process NOAA Global ",
+      "Ensemble Forecasting System (GEFS) weather forecasts for each site; they extend ",
+      "35 days ahead. The [catalog](", links$noaa, ") describes them and gives the code ",
+      "to access them.", sep = "")
+}
+```

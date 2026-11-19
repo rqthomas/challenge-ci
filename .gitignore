@@ -78,8 +78,8 @@ archive/
 
 
 
-# Dashboard data and settings written by `inst/scripts/dashboard.R stage`
-dashboard/data/
-dashboard/_challenge.yml
-dashboard/docs/
-dashboard/.quarto/
+# Local dashboard renders and dry-run output
+site/
+dry-run/
+tests/testthat/_problems/
+testthat-problems.rds

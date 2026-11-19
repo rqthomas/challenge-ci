@@ -7,10 +7,10 @@ driver CronJobs that used to be here duplicated the Actions workflows on the
 same schedule, so both wrote the same data; they were removed.
 
 If a stage ever needs more memory than a runner offers, run it as a CronJob
-that clones this repository and calls the same entry point the workflow uses,
-e.g. `Rscript inst/scripts/bundle.R forecasts`, in the image named by
-`ci$docker_image`. Then make the Actions workflow manual-only (remove its
-`schedule`), so the stage still has a single owner.
+that clones the challenge repository and runs the same command the workflow
+does, e.g. `Rscript -e 'challengeci::run_stage()' bundle forecasts`, in the
+image named by the challenge's `ci$docker_image`. Then comment out the trigger
+workflow's `schedule`, so the stage still has a single owner.
 
 ## Secrets
 

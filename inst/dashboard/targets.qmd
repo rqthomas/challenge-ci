@@ -1,0 +1,97 @@
+---
+title: "What to forecast"
+---
+
+```{r setup}
+#| include: false
+source("R/setup.R")
+sites <- readr::read_csv(data_file("sites.csv"), show_col_types = FALSE)
+groups <- names(cfg$target_groups)
+focal <- purrr::map(cfg$target_groups, function(g) unlist(g$focal_sites))
+```
+
+## Overview: Forecast the targets!
+
+The "targets" are time-series of data for use in model development and forecast evaluation. They are updated as new data are made available.
+
+The `r nrow(variables)` targets are organised into `r length(groups)` "themes". The themes and links to the target files are included below.
+
+## Where to start {#sec-starting-sites}
+
+If you are just getting started, we recommend the following focal sites for each theme. The first site in the list is the recommended starting site.
+
+```{r results = "asis"}
+cat(paste0("-   ", groups, ": ", purrr::map_chr(focal, toString), collapse = "\n"))
+```
+
+As you develop your forecasting skills and want to expand to more sites, the targets are available at all `r nrow(sites)` sites. You may also consider submitting forecasts to sites that match your interests. For example, a winter class may be more interested in forecasting southern sites than a summer class, which may focus on more northern sites.
+
+More information about the sites can be found in the [site metadata](`r links$sites`).
+
+## Explore the targets and themes {#sec-targets}
+
+In the tables,
+
+-   "duration" is the time-step of the variable, where `P1D` is a daily mean and `P1W` is a weekly total.
+-   the "horizon" is how far ahead we want you to forecast.
+-   the "latency" is the time between data collection and data availability in the target file.
+
+```{r results = "asis"}
+md <- function(df) paste(knitr::kable(df, format = "pipe"), collapse = "\n")
+
+render_tabs(purrr::map(groups, function(group) {
+  url <- cfg$target_groups[[group]]$targets_file
+  prose_file <- file.path("_content", "targets", paste0(group, ".md"))
+  prose <- if (file.exists(prose_file)) readLines(prose_file) else character()
+  table <- variables |>
+    dplyr::filter(.data$group == !!group) |>
+    dplyr::select(dplyr::any_of(c("variable", "duration", "description",
+                                  "horizon", "Latency"))) |>
+    dplyr::rename_with(tolower)
+  if (is.null(url)) {
+    return(list(title = group, text = c(prose, "", md(table)), widget = NULL))
+  }
+  targets <- readr::read_csv(targets_files(cfg, url), show_col_types = FALSE, progress = FALSE)
+  plot <- targets |>
+    dplyr::filter(site_id %in% focal[[group]], !is.na(observation)) |>
+    ggplot(aes(x = datetime, y = observation)) +
+    geom_point(size = 0.5) +
+    facet_grid(variable ~ site_id, scales = "free_y") +
+    theme_bw()
+  list(
+    title = group,
+    text = c(prose, "", md(table), "",
+             "The target file is at the following URL. You can load it directly into R:", "",
+             "```r",
+             paste0('url <- "', url, '"'),
+             "targets <- readr::read_csv(url, show_col_types = FALSE)",
+             "```", "",
+             "The file contains the following columns:", "",
+             md(utils::head(stats::na.omit(targets))), "",
+             "and the time series for the focal sites:"),
+    widget = plot
+  )
+}))
+```
+
+## Explore the sites
+
+```{r}
+leaflet::leaflet(sites) |>
+  leaflet::setView(lat = mean(sites$latitude), lng = mean(sites$longitude), zoom = 2) |>
+  leaflet::addTiles(group = "OSM") |>
+  leaflet::addProviderTiles(leaflet::providers$Esri.WorldImagery, group = "Imagery") |>
+  leaflet::addProviderTiles(leaflet::providers$Esri.WorldTopoMap, group = "Topo Map") |>
+  leaflet::addLayersControl(baseGroups = c("Imagery", "OSM", "Topo Map")) |>
+  leaflet::addMarkers(lng = ~longitude, lat = ~latitude,
+                      popup = ~paste0(site_name, " (", site_id, ")"),
+                      clusterOptions = leaflet::markerClusterOptions())
+```
+
+<br /> <br /> The following table lists all the sites in the `r cfg$challenge_long_name`. The columns with theme names say whether the site is in that theme's target file.
+
+```{r}
+sites |>
+  dplyr::select(-latitude, -longitude) |>
+  knitr::kable()
+```

@@ -1,19 +1,23 @@
 # AGENTS.md
 
-Guidance for anyone (human or AI agent) changing this repository. It runs the
-NEON Ecological Forecasting Challenge and is the template for other EFI
-challenges. Read the docs it points to before large changes.
+Guidance for anyone (human or AI agent) changing `challenge-ci`, the engine
+shared by the EFI forecasting challenges. Each challenge has its own repository
+(named `<project_id>-challenge`) holding its config, targets scripts and
+dashboard text; this repository holds no challenge's files. Read the docs it
+points to before large changes.
 
 ## What lives where
 
 | Path | What | Doc |
 |---|---|---|
-| `challenge_configuration.yaml` | every challenge-specific setting | `docs/configuration.md` |
-| `R/` | the `challengeci` package: all shared logic | `docs/developing.md` |
-| `inst/scripts/` | thin entry points the workflows run | header of each script |
-| `targets/` | challenge-specific data download and cleaning | `docs/launching-a-new-challenge.md` |
-| `dashboard/` | Quarto site; reads only `dashboard/data/` | `docs/developing.md` |
-| `.github/` | workflows and the composite actions they share | `docs/operations.md` |
+| `R/` | the `challengeci` package: all shared logic; `run_stage()` is the entry point | `docs/developing.md` |
+| `inst/dashboard/` | the dashboard template; challenges add their text | `docs/developing.md` |
+| `inst/workflows/` | trigger workflows challenge repos copy | `docs/operations.md` |
+| `.github/` | reusable workflows (`_*.yaml`), actions, image and release workflows | `docs/operations.md` |
+| `tests/testthat/fixtures/` | example configs: a minimal one, and `tests/testthat/fixtures/full_config.yaml` (a complete real challenge) | `docs/configuration.md` |
+
+A challenge repository checks itself with `check_challenge_repo()`: its config
+is valid and every file the config names exists.
 
 ## Commands
 
@@ -24,7 +28,7 @@ Rscript -e 'devtools::test()'                 # unit tests (no network, no secre
 Rscript -e 'devtools::document()'             # after editing roxygen; commit man/ and NAMESPACE
 Rscript -e 'devtools::check()'                # must stay 0 errors, warnings and notes
 Rscript -e 'lintr::lint_dir("R")'             # must stay at 0 lints
-DRY_RUN=true Rscript inst/scripts/<stage>.R   # run a stage without writing to S3
+DRY_RUN=true Rscript -e 'challengeci::run_stage()' <stage>   # from a challenge repo: no S3 writes
 ```
 
 ## Rules that protect production
@@ -38,16 +42,19 @@ DRY_RUN=true Rscript inst/scripts/<stage>.R   # run a stage without writing to S
 - **Secrets:** never read or print `.Renviron`; never put keys in the config,
   workflow files or Docker build-args. The config holds only the *names* of the
   environment variables.
-- **The config is read from GitHub `main` by outside tools** (the `neon4cast`
-  package). Add keys; never rename or repurpose existing ones.
-- **Shared resources:** the model metadata bucket and the Docker image are used
-  by other challenges and by participants. Treat changes to them as public.
+- **Challenge configs are read from GitHub by outside tools** (for NEON, the
+  `neon4cast` package). Add keys; never rename or repurpose existing ones.
+- **Shared resources:** the model metadata bucket and the images are used by
+  other challenges and by participants. Treat changes to them as public.
+- **Releases are public contracts:** challenges pin a version. Anything that
+  makes them change files is a major release with a `CHANGELOG.md` note.
 
 ## Conventions
 
 - Settings come from `cfg`; never hard-code a bucket, endpoint, variable, site
   or horizon. A new setting needs a config key, a row in
-  `docs/configuration.md` (a test fails otherwise) and a default in
+  `docs/configuration.md` (a test checks the keys of
+  `tests/testthat/fixtures/full_config.yaml`) and a default in
   `config_defaults()` when a sensible one exists.
 - Tidyverse style, native pipe, `pkg::fun()` inside `R/`, explicit `by =` in
   joins.
@@ -64,12 +71,15 @@ DRY_RUN=true Rscript inst/scripts/<stage>.R   # run a stage without writing to S
 - `duckdbfs::cached_connection(path)` ignores `path` once a connection exists;
   use `local_duckdb()` for a separate one.
 - Inside dbplyr filters, compute R values first and inject them with `!!`.
-- The NEON API returns 403 from some networks; NEON-based targets scripts may
-  only be testable in CI.
 - The submissions key can list but not read or delete (see
   `docs/operations.md`).
 - Workflow YAML: the `env` context is not available in `strategy.matrix`; pass
   workflow inputs to `run:` steps through `env:`, never inline `${{ }}`.
+- In a reusable workflow, `./` paths point at the calling challenge's checkout:
+  refer to engine actions and workflows as `eco4cast/challenge-ci/...@main`
+  (the release workflow rewrites them).
+- The Quarto visual editor rewrites inline R inside link URLs; keep pages in
+  source mode.
 
 ## Verifying a change
 
