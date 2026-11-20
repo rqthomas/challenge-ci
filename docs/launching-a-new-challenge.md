@@ -102,8 +102,8 @@ password manager). Tokens expire: note the date, and renew them before it.
 
 | Secret | Needed when | What it is |
 |---|---|---|
-| `OSN_KEY`, `OSN_SECRET` | **always** (targets, baselines, submissions, bundling, scoring, catalog, drivers; the dashboard only with `public_read: false`) | The key ID and secret of an S3 key that can read and write the **main store** (the buckets named in the config). The names are historical: they hold the key of whichever store `endpoint` is. See *The store key*. |
-| `EFI_NRP_KEY`, `EFI_NRP_SECRET` | scoring and targets, **unless** the scratch space uses the main key | The key for the `scratch` store. If scratch is in the main bucket (as in the template) set `credentials: scratch: {key_env: OSN_KEY, secret_env: OSN_SECRET}` in the config and skip these two. |
+| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | **always** (targets, baselines, submissions, bundling, scoring, catalog, drivers; the dashboard only with `public_read: false`) | The key ID and secret of an S3 key that can read and write the **main store** (the buckets named in the config). Whatever S3 store `endpoint` names, this is its key. See *The store key*. |
+| `EFI_NRP_KEY`, `EFI_NRP_SECRET` | scoring and targets, **unless** the scratch space uses the main key | The key for the `scratch` store. If scratch is in the main bucket (as in the template) set `credentials: scratch: {key_env: S3_ACCESS_KEY_ID, secret_env: S3_SECRET_ACCESS_KEY}` in the config and skip these two. |
 | `AWS_ACCESS_KEY_SUBMISSIONS`, `AWS_SECRET_ACCESS_KEY_SUBMISSIONS` | only if participants upload to a **submissions bucket** (`submissions$use_bucket` not `false`) or baselines go through it (`baselines_destination: submissions_bucket`) | A key for the `submissions_endpoint` store. A challenge that takes submissions from GitHub repositories and writes baselines straight to the forecasts bucket does not need it. |
 | `CATALOG_TOKEN` | only for the `catalog` workflow | A GitHub token that can push to the catalog repository. See *GitHub tokens*. |
 | `WORKFLOW_TOKEN` | only for the `update-engine` workflow | A GitHub token that can change workflow files and open pull requests in this repository. See *GitHub tokens*. |
@@ -117,8 +117,8 @@ For local runs put the same names in `.Renviron` at the repository root, which R
 reads at startup and which is never committed:
 
 ```
-OSN_KEY=...
-OSN_SECRET=...
+S3_ACCESS_KEY_ID=...
+S3_SECRET_ACCESS_KEY=...
 ```
 
 ### The store key
@@ -128,8 +128,8 @@ Create it in your S3 provider and give it access to the bucket only.
 - **Backblaze B2:** in the Backblaze account open **Application Keys → Add a New
   Application Key**; name it, set *Allow access to Bucket(s)* to your bucket, and
   *Type of Access* to **Read and Write**; create it. B2 shows the **keyID** and the
-  **applicationKey** only once: the keyID is `OSN_KEY`, the applicationKey is
-  `OSN_SECRET`.
+  **applicationKey** only once: the keyID is `S3_ACCESS_KEY_ID`, the applicationKey is
+  `S3_SECRET_ACCESS_KEY`.
 - **Other S3 stores** (OSN, AWS, Ceph): an access key ID and a secret key for a user
   or role that can list, read, write and delete in the bucket.
 
@@ -217,7 +217,7 @@ any way it needs to, and ends the same way as every other:
 # Run from the repository root:  Rscript challenge/targets/<group>_targets.R
 #
 # Environment variables
-#   OSN_KEY, OSN_SECRET  main store, for the upload
+#   S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY  main store, for the upload
 #   DRY_RUN=true         write the targets to a local folder instead
 
 library(challengeci)

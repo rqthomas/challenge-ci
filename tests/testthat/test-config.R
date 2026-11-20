@@ -17,7 +17,7 @@ test_that("read_config() explains a missing file", {
 test_that("defaults fill gaps but never override the file", {
   cfg <- test_config()
   # Not in the fixture: comes from config_defaults().
-  expect_equal(cfg$credentials$main$key_env, "OSN_KEY")
+  expect_equal(cfg$credentials$main$key_env, "S3_ACCESS_KEY_ID")
   # In the fixture: the file wins.
   expect_equal(cfg$scratch$bucket, "scratch-bucket/tmp")
 })

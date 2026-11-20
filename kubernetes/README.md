@@ -18,7 +18,7 @@ Create secrets in the namespace if they do not already exist:
 
 ```
 kubectl create secret generic github-secrets --from-literal=GITHUB_PAT=<your-github-token> -n <namespace>
-kubectl create secret generic osn-secrets --from-literal=OSN_KEY=<your-osn-key> --from-literal=OSN_SECRET=<your-osn-secret> -n <namespace>
+kubectl create secret generic s3-secrets --from-literal=S3_ACCESS_KEY_ID=<your-access-key-id> --from-literal=S3_SECRET_ACCESS_KEY=<your-secret-access-key> -n <namespace>
 ```
 
 Edit or view secrets:

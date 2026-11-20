@@ -30,7 +30,7 @@ test_that("bucket_uri() names a missing bucket setting", {
 
 test_that("store_credentials() reads the configured environment variables", {
   cfg <- test_config()
-  withr::local_envvar(OSN_KEY = "k", OSN_SECRET = "s")
+  withr::local_envvar(S3_ACCESS_KEY_ID = "k", S3_SECRET_ACCESS_KEY = "s")
   expect_equal(store_credentials(cfg, "main"),
                list(endpoint = "s3.example.org", key = "k", secret = "s"))
   # NOAA falls back to the main endpoint and credentials.

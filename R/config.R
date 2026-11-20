@@ -76,7 +76,7 @@ config_defaults <- function() {
   list(
     public_read = TRUE,
     credentials = list(
-      main = list(key_env = "OSN_KEY", secret_env = "OSN_SECRET"),
+      main = list(key_env = "S3_ACCESS_KEY_ID", secret_env = "S3_SECRET_ACCESS_KEY"),
       submissions = list(key_env = "AWS_ACCESS_KEY_SUBMISSIONS",
                          secret_env = "AWS_SECRET_ACCESS_KEY_SUBMISSIONS"),
       scratch = list(key_env = "EFI_NRP_KEY", secret_env = "EFI_NRP_SECRET")

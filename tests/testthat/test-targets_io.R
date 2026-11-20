@@ -141,9 +141,9 @@ test_that("the published targets of a private store are downloaded, not fetched 
 })
 
 test_that("a store without a key is read anonymously only when it is public", {
-  withr::local_envvar(OSN_KEY = "", OSN_SECRET = "")
+  withr::local_envvar(S3_ACCESS_KEY_ID = "", S3_SECRET_ACCESS_KEY = "")
   expect_true(read_anonymously_without_key(test_config()))
   expect_false(read_anonymously_without_key(private_cfg()))
-  withr::local_envvar(OSN_KEY = "k", OSN_SECRET = "s")
+  withr::local_envvar(S3_ACCESS_KEY_ID = "k", S3_SECRET_ACCESS_KEY = "s")
   expect_false(read_anonymously_without_key(test_config()))
 })

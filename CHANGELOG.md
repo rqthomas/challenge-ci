@@ -10,8 +10,18 @@ says exactly what to change.
 
 ## Unreleased
 
-Minor release; every new key is optional and the defaults keep today's
-behaviour.
+**Breaking for the main store's key:** the secrets and environment variables that
+held it are renamed from `OSN_KEY` and `OSN_SECRET` to the store-neutral
+`S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. To upgrade a challenge, (1) add
+repository secrets with the new names (the same values), (2) rename the same
+variables in your `.Renviron`, and (3) if the config has its own `credentials:`
+block naming the old variables, change it to the new names or delete it (the new
+names are the defaults). The workflows no longer pass `OSN_KEY` or `OSN_SECRET`,
+so a challenge that keeps the old secrets stops being able to reach the store.
+The other stores' names (`EFI_NRP_*`, `AWS_*_SUBMISSIONS`) are unchanged.
+
+This release is therefore a major one. Apart from the rename, every new key is
+optional and the defaults keep today's behaviour.
 
 - Submissions can also be read from contributors' public GitHub repositories,
   alongside the submissions bucket: `submissions$github$registry` turns it on,

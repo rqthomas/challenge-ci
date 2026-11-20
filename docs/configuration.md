@@ -73,8 +73,8 @@ There are four stores. A store is an S3 endpoint plus its credentials:
 | `processed_submissions` | | CSV recording which submissions have been processed. It stands in for deleting them; see the comment in the config file. | submissions |
 | `scratch$endpoint` | | Host of the `scratch` store. | scoring |
 | `scratch$bucket` | | Scratch bucket and prefix. The `score_me`, `forecasts`, `scores` and `targets` folders under it are deleted at the start of each scoring run. | scoring |
-| `credentials$<store>$key_env` | | **Name** of the environment variable holding the store's access key. Defaults: `OSN_KEY`, `AWS_ACCESS_KEY_SUBMISSIONS`, `EFI_NRP_KEY`. | pkg |
-| `credentials$<store>$secret_env` | | **Name** of the environment variable holding the store's secret key. Defaults: `OSN_SECRET`, `AWS_SECRET_ACCESS_KEY_SUBMISSIONS`, `EFI_NRP_SECRET`. | pkg |
+| `credentials$<store>$key_env` | | **Name** of the environment variable holding the store's access key. Defaults: `S3_ACCESS_KEY_ID`, `AWS_ACCESS_KEY_SUBMISSIONS`, `EFI_NRP_KEY`. | pkg |
+| `credentials$<store>$secret_env` | | **Name** of the environment variable holding the store's secret key. Defaults: `S3_SECRET_ACCESS_KEY`, `AWS_SECRET_ACCESS_KEY_SUBMISSIONS`, `EFI_NRP_SECRET`. | pkg |
 
 Never put the keys themselves in the config. They come from GitHub repository
 secrets, which the workflows expose as the environment variables named above.
@@ -87,7 +87,7 @@ secrets, which the workflows expose as the environment variables named above.
 | `submissions$known_themes_only` | `false` | If `true`, only files whose name starts with one of the target groups' themes are processed; every other file is left in the bucket untouched. Set it when the submissions bucket is shared with another challenge. | submissions |
 | `submissions$min_reference_date` | | Files whose name dates them before this (`YYYY-MM-DD`) are archived without being processed. | submissions |
 | `submissions$use_bucket` | `true` | Read the submissions bucket. Set `false` to take submissions only from GitHub repositories (see `submissions$github`); the bucket's credentials are then not needed. | submissions |
-| `submissions$baselines_destination` | `submissions_bucket` | Where baseline forecasts go. `submissions_bucket` uploads them for the submissions stage to process like any submission. `forecasts_bucket` processes them on the spot and writes parquet, summaries and the raw copy straight to the forecasts bucket, so the baselines need only the main store's key (`OSN_KEY`) and not the submissions key. | baselines |
+| `submissions$baselines_destination` | `submissions_bucket` | Where baseline forecasts go. `submissions_bucket` uploads them for the submissions stage to process like any submission. `forecasts_bucket` processes them on the spot and writes parquet, summaries and the raw copy straight to the forecasts bucket, so the baselines need only the main store's key (`S3_ACCESS_KEY_ID`) and not the submissions key. | baselines |
 | `submissions$github$registry` | | Turns on submissions from contributors' public GitHub repositories, read alongside the bucket. A CSV (path in the challenge repository, or URL) with one row per repository: `repo` (`owner/name`), optional `repo_id` (GitHub's numeric id; when given it must match) and `registered` (a date). See [operations.md](operations.md#submissions-from-github-repositories). | submissions |
 | `submissions$github$issue_registration` | `false` | Set `true` when the challenge repository has the registration issue form and workflow (see [operations.md](operations.md#submissions-from-github-repositories)); the dashboard's instructions then link to the form instead of asking participants to email. | dashboard |
 | `submissions$github$max_file_mb` | `100` | Largest forecast file read from a repository. Larger files are reported as skipped. | submissions |

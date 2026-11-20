@@ -40,8 +40,8 @@ jobs:
       image: ${{ needs.config.outputs.image }}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      OSN_KEY: ${{ secrets.OSN_KEY }}
-      OSN_SECRET: ${{ secrets.OSN_SECRET }}
+      S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
       NEON_TOKEN: ${{ secrets.NEON_TOKEN }}
       EFI_NRP_KEY: ${{ secrets.EFI_NRP_KEY }}
       EFI_NRP_SECRET: ${{ secrets.EFI_NRP_SECRET }}

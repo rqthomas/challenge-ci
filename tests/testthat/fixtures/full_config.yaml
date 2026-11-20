@@ -29,7 +29,7 @@ scratch:
 # secrets) holding its access key and secret. Never put the secrets here.
 # The noaa store (noaa_endpoint) uses the main credentials.
 credentials:
-  main: {key_env: OSN_KEY, secret_env: OSN_SECRET}
+  main: {key_env: S3_ACCESS_KEY_ID, secret_env: S3_SECRET_ACCESS_KEY}
   submissions: {key_env: AWS_ACCESS_KEY_SUBMISSIONS, secret_env: AWS_SECRET_ACCESS_KEY_SUBMISSIONS}
   scratch: {key_env: EFI_NRP_KEY, secret_env: EFI_NRP_SECRET}
 # Site metadata. `columns` maps standard names (left) to the file's columns

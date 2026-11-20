@@ -120,7 +120,7 @@ reusable workflows map secrets onto them.
 
 | Secret | Read as | Used by | For |
 |---|---|---|---|
-| `OSN_KEY`, `OSN_SECRET` | same | most workflows | the main store (`endpoint`): reading and writing |
+| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | same | most workflows | the main store (`endpoint`): reading and writing |
 | `EFI_NRP_KEY`, `EFI_NRP_SECRET` | same | scoring, targets | the scratch store (`scratch`), unless `credentials.scratch` points at the main key |
 | `AWS_ACCESS_KEY_SUBMISSIONS`, `AWS_SECRET_ACCESS_KEY_SUBMISSIONS` | same | submissions, baselines | the submissions bucket (only when it is used): listing and moving files, uploading baseline forecasts |
 | `NEON_TOKEN` | same | targets | NEON API downloads (NEON-based challenges) |
@@ -340,7 +340,7 @@ them. To keep the bucket private, set `public_read: false` in the config. Then:
   targets files are downloaded with it instead of fetched by URL. The workflows
   already pass the key to every job that needs it, including the dashboard;
 - a dry run needs the key too, since nothing can be read without it
-  (`OSN_KEY` and `OSN_SECRET` in `.Renviron` or the environment);
+  (`S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` in `.Renviron` or the environment);
 - the NOAA driver store is unaffected (it is read as before).
 
 What a private bucket cannot do is serve participants. These parts of the
