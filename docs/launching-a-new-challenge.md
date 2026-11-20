@@ -86,12 +86,111 @@ before choosing it for a public challenge: reads that open a folder of parquet
 files without credentials (the engine's anonymous reads, the catalog's access
 code for participants) need listing.
 
-## 5. Add the secrets
+## 5. Add the secrets and tokens
 
-Add the repository secrets listed in [operations.md](operations.md#secrets):
-keys for each store, `CATALOG_TOKEN` (a token that can push to the catalog
-repository) and, if you build your own image on Docker Hub, its credentials.
-For local runs, put the same names in `.Renviron` at the repository root.
+The workflows read their credentials from **repository secrets** of the challenge
+repository. Nothing secret ever goes in the config, a workflow or the code: the
+config holds only the *names* of the environment variables (`credentials`).
+
+**To add a secret:** on github.com open the repository's **Settings → Secrets and
+variables → Actions → New repository secret**, or run
+`gh secret set <NAME> -R <owner>/<repository>` and paste the value when asked.
+A secret's value cannot be read back, so keep the original somewhere safe (a
+password manager). Tokens expire: note the date, and renew them before it.
+
+### What you need
+
+| Secret | Needed when | What it is |
+|---|---|---|
+| `OSN_KEY`, `OSN_SECRET` | **always** (targets, baselines, submissions, bundling, scoring, catalog, drivers; the dashboard only with `public_read: false`) | The key ID and secret of an S3 key that can read and write the **main store** (the buckets named in the config). The names are historical: they hold the key of whichever store `endpoint` is. See *The store key*. |
+| `EFI_NRP_KEY`, `EFI_NRP_SECRET` | scoring and targets, **unless** the scratch space uses the main key | The key for the `scratch` store. If scratch is in the main bucket (as in the template) set `credentials: scratch: {key_env: OSN_KEY, secret_env: OSN_SECRET}` in the config and skip these two. |
+| `AWS_ACCESS_KEY_SUBMISSIONS`, `AWS_SECRET_ACCESS_KEY_SUBMISSIONS` | only if participants upload to a **submissions bucket** (`submissions$use_bucket` not `false`) or baselines go through it (`baselines_destination: submissions_bucket`) | A key for the `submissions_endpoint` store. A challenge that takes submissions from GitHub repositories and writes baselines straight to the forecasts bucket does not need it. |
+| `CATALOG_TOKEN` | only for the `catalog` workflow | A GitHub token that can push to the catalog repository. See *GitHub tokens*. |
+| `WORKFLOW_TOKEN` | only for the `update-engine` workflow | A GitHub token that can change workflow files and open pull requests in this repository. See *GitHub tokens*. |
+| `NEON_TOKEN` | NEON-based targets scripts | A NEON API token: sign in at [data.neonscience.org](https://data.neonscience.org), open *Get an API token* in your account, and copy it. |
+| `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | only if your own image (`challenge/Dockerfile`) is pushed to **Docker Hub** | Your Docker Hub user name and an access token (Docker Hub → Account settings → Security → New access token, with write access). An image on `ghcr.io` needs neither. |
+| `PAT` | optional, for building your own image | A GitHub token for installing packages from GitHub during the build without rate limits. |
+
+Participants of a **private** challenge also need a key (see *Participants'
+keys*), and the engine's maintainers need two more (see *Engine maintainers*).
+For local runs put the same names in `.Renviron` at the repository root, which R
+reads at startup and which is never committed:
+
+```
+OSN_KEY=...
+OSN_SECRET=...
+```
+
+### The store key
+
+Create it in your S3 provider and give it access to the bucket only.
+
+- **Backblaze B2:** in the Backblaze account open **Application Keys → Add a New
+  Application Key**; name it, set *Allow access to Bucket(s)* to your bucket, and
+  *Type of Access* to **Read and Write**; create it. B2 shows the **keyID** and the
+  **applicationKey** only once: the keyID is `OSN_KEY`, the applicationKey is
+  `OSN_SECRET`.
+- **Other S3 stores** (OSN, AWS, Ceph): an access key ID and a secret key for a user
+  or role that can list, read, write and delete in the bucket.
+
+Keep a separate, **read-only** key for anyone who only needs to read a private
+bucket; never hand out this one.
+
+### GitHub tokens
+
+`CATALOG_TOKEN` and `WORKFLOW_TOKEN` are **fine-grained personal access tokens**.
+The built-in `GITHUB_TOKEN` cannot do what they do (push to another repository,
+change files under `.github/workflows`, open a pull request that starts the
+checks). To create one:
+
+1. On github.com click your profile picture → **Settings → Developer settings →
+   Personal access tokens → Fine-grained tokens → Generate new token**.
+2. Give it a name, set **Resource owner** to the account or organization that
+   owns the repository, and set an **expiration** (renew it then).
+3. Under **Repository access** choose **Only select repositories** and pick the
+   repository from the table below.
+4. Under **Repository permissions** set the permissions from the table to *Read and
+   write*, then **Generate token** and copy it straight away; GitHub shows it once.
+5. Store it as the secret named in the table (`gh secret set NAME -R <owner>/<repo>`).
+   An organization may have to approve fine-grained tokens first.
+
+| Secret | Repository access | Permissions |
+|---|---|---|
+| `CATALOG_TOKEN` | the **catalog** repository only | Contents |
+| `WORKFLOW_TOKEN` | the **challenge** repository only | Contents, Pull requests, Workflows |
+
+### No token needed, but check
+
+- **The built-in `GITHUB_TOKEN`** is used for the dashboard (pushing to `gh-pages`)
+  and registration by issue (committing the registry, commenting). The trigger
+  workflows already ask for the permissions they need. If a run fails with a 403,
+  allow it in **Settings → Actions → General → Workflow permissions** (*Read and
+  write permissions*; in the organization's settings if the option is greyed out).
+- **The engine's container image** must be readable by your workflows. A package
+  that `ghcr.io/<owner>/challenge-ci` publishes is private by default, and a private
+  image makes every job fail at "Initialize containers". In the package's settings
+  (github.com → your profile or organization → **Packages** → `challenge-ci` →
+  **Package settings**) either set the visibility to **Public** (the image holds
+  nothing secret) or add the challenge repository under *Manage Actions access*.
+  Do the same for your own image if you build one.
+
+### Participants' keys
+
+If the main bucket is **private**, participants need a way to read the targets. Give
+each of them (or share one) a **read-only** store key, created as in *The store key*
+with *Type of Access* **Read Only**. In their own repository it goes in as the
+secrets `S3_KEY` and `S3_SECRET`; the example submission's `forecast.R` reads them.
+A public bucket needs no key. Submitting from GitHub needs no token at all.
+
+### Engine maintainers
+
+The engine repository (`challenge-ci`) has its own secrets, only for the people who
+release it:
+
+| Secret | Used by | What it is |
+|---|---|---|
+| `RELEASE_TOKEN` | the `release` workflow | A fine-grained token for the **engine** repository with *Contents* and *Workflows* read and write (the release commit changes workflow files). |
+| `TEMPLATE_TOKEN` | `template-check` | A token that can read the template repository, only while it is private. Optional once it is public. |
 
 ## 6. Set up registration and variable metadata
 
@@ -162,8 +261,30 @@ site with `Rscript -e 'challengeci::run_stage()' dashboard site` and open
 
 ### The catalog
 
-Create an empty repository for the STAC catalog and set
-`catalog_config$catalog_repo` and `catalog_config$catalog_path`.
+The `catalog` workflow builds the challenge's STAC catalog (browsable at
+[radiantearth.github.io/stac-browser](https://radiantearth.github.io/stac-browser))
+and commits it to a **separate repository**, which must exist before the first
+run, even for a dry run (the workflow clones it first). You can skip the catalog
+altogether by never running that workflow: the forecasts, scores and dashboard do
+not depend on it, but the dashboard's catalog page then links to nothing, and the
+model metadata records (`<model_metadata_bucket>/<model_id>.json`), which the
+same stage writes from the registrations, are not updated. (`run_stage()` with
+`catalog metadata` writes only those, and needs no catalog repository.)
+
+1. **Create the repository**, public, *with a README* so that it has a `main`
+   branch (the catalog's links assume `main`):
+   ```sh
+   gh repo create <owner>/<name>-catalog --public --add-readme \
+     --description "STAC catalog for <challenge name>"
+   ```
+2. **Point the config at it:** `catalog_config$catalog_repo` is `<owner>/<name>-catalog`,
+   and `catalog_config$catalog_path` is the folder name the workflow clones it
+   into, normally the repository name (the `*_path` settings below it start with
+   the same name).
+3. **Give the workflow a token to push to it:** create `CATALOG_TOKEN` as described
+   in [step 5](#github-tokens) (a fine-grained token for the catalog repository,
+   with *Contents: Read and write*) and store it in the **challenge** repository.
+   The workflow reads it as `EXTERNAL_GH_PAT`.
 
 ### The dashboard (GitHub Pages)
 

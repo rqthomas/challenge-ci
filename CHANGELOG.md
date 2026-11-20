@@ -34,6 +34,10 @@ behaviour.
   `_register.yaml` workflow, a trigger (`inst/workflows/register.yaml`) and an
   issue form (`inst/issue_forms/register-forecast-repo.yml`). A bot checks the
   repository, commits its row to the registry file and answers on the issue.
+- The catalog no longer fails for a kind with nothing bundled yet (the `scores`
+  part stopped with "Path does not exist .../scores/bundled-parquet/" before the
+  first scoring run): it writes an empty collection, and the columns appear once
+  data exist.
 - `ensure_mc()` installs the MinIO client from its pinned GitHub release (checked
   against a SHA-256) when it is missing, and every stage uses it in place of
   `minioclient::install_mc()`, which fails with HTTP 410 because MinIO withdrew

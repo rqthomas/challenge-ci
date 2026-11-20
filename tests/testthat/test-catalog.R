@@ -159,3 +159,33 @@ test_that("a collection with no dates has an open-ended interval", {
   expect_equal(col$extent$temporal$interval,
                list(list("2024-01-01T00:00:00Z", "2024-02-01T00:00:00Z")))
 })
+
+test_that("a kind with nothing bundled yet is built without reading its dataset", {
+  cfg <- catalog_test_config()
+  time <- as.POSIXct(character(), tz = "UTC")
+  empty <- tibble::tibble(model_id = character(), variable = character(),
+                          duration = character(), site_id = character(), first = time,
+                          last = time, last_reference = time, last_pub = time)
+  inventory <- list(summaries = empty, scores = empty)
+  registered <- tibble::tibble(model_id = character(), code_url = character(),
+                               public_contact = character(), contact_name = character(),
+                               description = character())
+  metadata <- tibble::tibble(variable = c("temperature", "oxygen", "richness"),
+                             duration = c("P1D", "P1D", "P1W"), long_name = "v",
+                             description = "a variable")
+  out <- withr::local_tempdir()
+  build_root_catalog(cfg, out)
+  # No `schema`: the dataset does not exist, so reading it would fail.
+  testthat::local_mocked_bindings(
+    arrow_bucket = function(...) stop("must not open the dataset"),
+    arrow_schema = function(...) stop("must not read the schema")
+  )
+  for (kind in c("scores", "forecasts", "summaries")) {
+    expect_no_error(
+      build_model_collection(kind, cfg, inventory, read_sites(cfg), registered,
+                             catalog_variables(cfg, metadata), out)
+    )
+  }
+  collection <- read_json(out, "scores", "collection.json")
+  expect_equal(length(collection[["table:columns"]]), 0)
+})

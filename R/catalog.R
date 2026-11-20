@@ -290,7 +290,8 @@ catalog_kind <- function(kind, cfg) {
 #' @param variables Variables from [catalog_variables()].
 #' @param out_dir Root of the catalog.
 #' @param schema Columns of the bundled dataset, as a tibble with `name` and
-#'   `type`. Defaults to reading the dataset's schema from the bucket.
+#'   `type`. Defaults to reading the dataset's schema from the bucket, or to no
+#'   columns when the inventory is empty (nothing bundled yet).
 #' @return The target groups written, invisibly.
 #' @export
 build_model_collection <- function(kind, cfg, inventory, sites, registered, variables, out_dir,
@@ -324,8 +325,15 @@ build_model_collection <- function(kind, cfg, inventory, sites, registered, vari
 
   data_path <- c(spec$bucket, spec$folder)
   if (is.null(schema)) {
-    bucket <- arrow_bucket(cfg, spec$bucket, spec$folder, anonymous = anonymous_reads(cfg))
-    schema <- arrow_schema(arrow::open_dataset(bucket)$schema)
+    schema <- if (nrow(inv) == 0) {
+      # No data bundled yet (a new challenge, or no scores before the first
+      # scoring run): there is no dataset to read the columns from, and opening it
+      # would fail. The columns appear at the next run once data exist.
+      tibble::tibble(name = character(), type = list())
+    } else {
+      bucket <- arrow_bucket(cfg, spec$bucket, spec$folder, anonymous = anonymous_reads(cfg))
+      arrow_schema(arrow::open_dataset(bucket)$schema)
+    }
   }
   ctx <- list(
     kind = kind, spec = spec, cfg = cfg, models = models, model_sites = model_sites,

@@ -113,21 +113,27 @@ and `ci.docker_image` alone.
 
 ## Secrets
 
-Set these as GitHub repository secrets of the challenge repository. The
-config names the environment variables the code reads (`credentials`); the
+Set these as GitHub repository secrets of the challenge repository (how to create
+each one is in [launching-a-new-challenge.md](launching-a-new-challenge.md#5-add-the-secrets-and-tokens)).
+The config names the environment variables the code reads (`credentials`); the
 reusable workflows map secrets onto them.
 
 | Secret | Read as | Used by | For |
 |---|---|---|---|
-| `OSN_KEY`, `OSN_SECRET` | same | most workflows | writing to the main store (`endpoint`) |
-| `AWS_ACCESS_KEY_SUBMISSIONS`, `AWS_SECRET_ACCESS_KEY_SUBMISSIONS` | same | submissions, baselines | the submissions bucket: listing and moving files, uploading baseline forecasts |
-| `EFI_NRP_KEY`, `EFI_NRP_SECRET` | same | scoring, targets | the scratch store (`scratch`) |
+| `OSN_KEY`, `OSN_SECRET` | same | most workflows | the main store (`endpoint`): reading and writing |
+| `EFI_NRP_KEY`, `EFI_NRP_SECRET` | same | scoring, targets | the scratch store (`scratch`), unless `credentials.scratch` points at the main key |
+| `AWS_ACCESS_KEY_SUBMISSIONS`, `AWS_SECRET_ACCESS_KEY_SUBMISSIONS` | same | submissions, baselines | the submissions bucket (only when it is used): listing and moving files, uploading baseline forecasts |
 | `NEON_TOKEN` | same | targets | NEON API downloads (NEON-based challenges) |
 | `CATALOG_TOKEN` | `EXTERNAL_GH_PAT` | catalog | pushing to the catalog repository |
 | `WORKFLOW_TOKEN` | — | update-engine | opening the pull request that changes the workflow files (see Upgrading the engine) |
-| `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | — | challenge-image | pushing the challenge image to Docker Hub |
+| `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | — | challenge-image | pushing the challenge image to Docker Hub (not needed for `ghcr.io`) |
 | `PAT` | build secret `github_pat` | challenge-image | GitHub installs during the build, without rate limits (optional) |
 
+In the engine repository itself: `RELEASE_TOKEN` (the `release` workflow) and
+`TEMPLATE_TOKEN` (`template-check`, while the template is private).
+
+The built-in `GITHUB_TOKEN` covers the dashboard's push to `gh-pages` and the
+registration workflow; the trigger workflows request the permissions they need.
 For local runs, the same names go in `.Renviron` at the challenge repository's
 root, which R reads at startup. `.Renviron` is never committed.
 
