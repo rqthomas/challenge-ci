@@ -20,7 +20,7 @@ env:
 
 jobs:
   config:
-    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+    uses: rqthomas/challenge-ci/.github/workflows/_config.yaml@v0.1.0-rc.10
 
   catalog:
     needs: config
@@ -39,7 +39,7 @@ jobs:
 
       - uses: actions/checkout@v6
 
-      - uses: eco4cast/challenge-ci/.github/actions/setup-challenge@main
+      - uses: rqthomas/challenge-ci/.github/actions/setup-challenge@v0.1.0-rc.10
 
       # The catalog is written to ../<catalog_config$catalog_path>, a clone of
       # catalog_config$catalog_repo.
@@ -74,6 +74,6 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-      - uses: eco4cast/challenge-ci/.github/actions/healthcheck@main
+      - uses: rqthomas/challenge-ci/.github/actions/healthcheck@v0.1.0-rc.10
         with:
           name: catalog
