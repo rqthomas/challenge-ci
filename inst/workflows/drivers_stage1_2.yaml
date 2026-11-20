@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   run:
-    uses: eco4cast/challenge-ci/.github/workflows/_drivers_stage1_2.yaml@main
+    uses: rqthomas/challenge-ci/.github/workflows/_drivers_stage1_2.yaml@v0.1.0-rc.9
     with:
       dry_run: ${{ inputs.dry_run || false }}
     secrets: inherit
