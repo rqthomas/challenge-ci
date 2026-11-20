@@ -55,6 +55,27 @@ test_that("latest_forecasts() keeps the newest settled forecast at plot sites", 
   expect_equal(nrow(out), 2)
 })
 
+test_that("latest_forecasts() falls back to the newest forecast for a new challenge", {
+  skip_if_not_installed("arrow")
+  now <- utc("2024-06-10")
+  summaries <- tidyr::expand_grid(
+    model_id = "m", site_id = "AAAA", variable = c("temperature", "oxygen"),
+    reference_datetime = utc(c("2024-06-09", "2024-06-10")), lead = 1:2
+  ) |>
+    dplyr::mutate(datetime = reference_datetime + lead * 86400, mean = 1,
+                  quantile02.5 = 0, quantile97.5 = 2) |>
+    dplyr::select(-lead)
+  # Temperature also has an old forecast; oxygen has only recent ones.
+  old <- dplyr::filter(summaries, variable == "temperature") |>
+    dplyr::mutate(reference_datetime = utc("2024-06-01"), datetime = reference_datetime + 86400)
+  summaries <- dplyr::bind_rows(summaries, old)
+  sites <- tibble::tibble(variable = c("temperature", "oxygen"), site_id = "AAAA")
+  out <- latest_forecasts(lazy_table(summaries), sites, now)
+  newest <- dplyr::summarise(out, ref = format(as.Date(max(reference_datetime))), .by = variable)
+  expect_equal(newest$ref[newest$variable == "temperature"], "2024-06-01")  # the settled one
+  expect_equal(newest$ref[newest$variable == "oxygen"], "2024-06-10")       # nothing older: newest
+})
+
 test_that("scored_forecasts() picks the latest forecast old enough to have observations", {
   skip_if_not_installed("arrow")
   now <- utc("2024-06-30")

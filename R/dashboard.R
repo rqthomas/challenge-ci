@@ -229,14 +229,18 @@ empty_dashboard_table <- function(part) {
 }
 
 # The most recent forecast of each variable made at least two days ago (so
-# most teams have submitted), at the plot sites.
+# most teams have submitted), at the plot sites. A variable with no forecast
+# that old yet (a new challenge) shows its newest one instead of nothing.
 latest_forecasts <- function(summaries, sites, now) {
   cutoff <- now - lubridate::days(2)
-  refs <- summaries |>
-    dplyr::filter(.data$reference_datetime < !!cutoff,
-                  .data$variable %in% !!unique(sites$variable)) |>
-    dplyr::summarise(reference_datetime = max(.data$reference_datetime, na.rm = TRUE),
-                     .by = "variable")
+  newest <- function(df) {
+    df |>
+      dplyr::filter(.data$variable %in% !!unique(sites$variable)) |>
+      dplyr::summarise(reference_datetime = max(.data$reference_datetime, na.rm = TRUE),
+                       .by = "variable")
+  }
+  settled <- newest(dplyr::filter(summaries, .data$reference_datetime < !!cutoff))
+  refs <- dplyr::union_all(settled, dplyr::anti_join(newest(summaries), settled, by = "variable"))
   summaries |>
     dplyr::filter(.data$site_id %in% !!unique(sites$site_id),
                   .data$datetime > .data$reference_datetime) |>
