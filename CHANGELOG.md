@@ -34,6 +34,14 @@ behaviour.
   `_register.yaml` workflow, a trigger (`inst/workflows/register.yaml`) and an
   issue form (`inst/issue_forms/register-forecast-repo.yml`). A bot checks the
   repository, commits its row to the registry file and answers on the issue.
+- `ensure_mc()` installs the MinIO client from its pinned GitHub release (checked
+  against a SHA-256) when it is missing, and every stage uses it in place of
+  `minioclient::install_mc()`, which fails with HTTP 410 because MinIO withdrew
+  its downloads. Stages and targets scripts now work on a machine or in a
+  workflow that has not pre-installed mc. New dependency: openssl (already
+  installed with httr2). Targets scripts should call `ensure_mc()`.
+- The dashboard workflow installs mc from GitHub before building, so a private
+  store (`public_read: false`) no longer fails on the withdrawn MinIO download.
 - `update-engine` workflow (`_update-engine.yaml`, trigger in
   `inst/workflows/update-engine.yaml`): moves every workflow of a challenge to a
   chosen engine release, or the latest, and opens a pull request. Needs the

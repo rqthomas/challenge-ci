@@ -25,6 +25,7 @@ Imports:
     jsonlite,
     lubridate,
     minioclient,
+    openssl,
     purrr,
     readr,
     rlang,

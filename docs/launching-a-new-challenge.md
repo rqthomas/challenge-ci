@@ -123,7 +123,7 @@ any way it needs to, and ends the same way as every other:
 
 library(challengeci)
 cfg <- read_config()
-minioclient::install_mc()
+ensure_mc()      # the MinIO client, installed from GitHub if missing
 sites <- read_sites(cfg, "<Group>")
 
 observations <- ...  # site_id, datetime, variable, observation

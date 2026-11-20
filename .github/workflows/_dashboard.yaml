@@ -37,6 +37,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      # With `public_read: false` the dashboard downloads the targets with mc, and
+      # minioclient::install_mc() no longer works (dl.min.io returns 410 Gone), so
+      # put the binary in place first, as every other workflow does.
+      - uses: eco4cast/challenge-ci/.github/actions/install-mc@main
+
       # Quarto comes with the image. The key is used only when the config sets
       # `public_read: false`.
       - name: Build the dashboard

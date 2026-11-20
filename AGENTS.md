@@ -71,6 +71,9 @@ DRY_RUN=true Rscript -e 'challengeci::run_stage()' <stage>   # from a challenge 
 - `duckdbfs::cached_connection(path)` ignores `path` once a connection exists;
   use `local_duckdb()` for a separate one.
 - Inside dbplyr filters, compute R values first and inject them with `!!`.
+- `minioclient::install_mc()` fails with HTTP 410 (MinIO withdrew its downloads):
+  call `ensure_mc()` instead, which installs the pinned release from GitHub. The
+  workflows also pre-install it with `.github/actions/install-mc`.
 - The submissions key can list but not read or delete (see
   `docs/operations.md`).
 - Workflow YAML: the `env` context is not available in `strategy.matrix`; pass

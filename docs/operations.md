@@ -131,6 +131,18 @@ reusable workflows map secrets onto them.
 For local runs, the same names go in `.Renviron` at the challenge repository's
 root, which R reads at startup. `.Renviron` is never committed.
 
+## The MinIO client
+
+Uploads and most listings go through the MinIO client, `mc`. MinIO has withdrawn
+the download that `minioclient::install_mc()` uses (it answers HTTP 410 Gone), so
+the engine installs the pinned release from GitHub itself: `ensure_mc()` does it
+when a stage or script starts (Linux and macOS, Intel or ARM), and the workflows
+also run `.github/actions/install-mc` first. Both check the download against a
+SHA-256. To move to a newer `mc`, change `mc_release` and the checksums in
+`R/mc.R` and the defaults in `.github/actions/install-mc/action.yml` together; a
+test fails if they differ. In your own scripts call `challengeci::ensure_mc()`,
+not `minioclient::install_mc()`.
+
 ## Common tasks
 
 - **Rerun a stage:** open the workflow in the Actions tab and choose *Run
