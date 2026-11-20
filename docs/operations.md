@@ -129,8 +129,10 @@ reusable workflows map secrets onto them.
 | `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | — | challenge-image | pushing the challenge image to Docker Hub (not needed for `ghcr.io`) |
 | `PAT` | build secret `github_pat` | challenge-image | GitHub installs during the build, without rate limits (optional) |
 
-In the engine repository itself: `RELEASE_TOKEN` (the `release` workflow) and
-`TEMPLATE_TOKEN` (`template-check`, while the template is private).
+In the engine repository itself: `RELEASE_TOKEN` (the `release` workflow),
+`TEMPLATE_TOKEN` (`template-check`, while the template is private) and
+`TEMPLATE_S3_ACCESS_KEY_ID` / `TEMPLATE_S3_SECRET_ACCESS_KEY` (`template-check`: a
+read-only key for the template's private bucket; without it only the config check runs).
 
 The built-in `GITHUB_TOKEN` covers the dashboard's push to `gh-pages` and the
 registration workflow; the trigger workflows request the permissions they need.

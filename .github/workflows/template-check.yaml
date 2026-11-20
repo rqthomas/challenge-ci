@@ -5,8 +5,14 @@
 #
 # Runs in the engine's base image from main (docker.yaml) and installs the
 # checked-out package over the copy in the image. DRY_RUN=true: the stages read
-# the real public buckets and write only to dry-run/. Uses no production
-# secrets; the submissions stage needs the submissions key, so it is not run.
+# the template's real buckets and write only to dry-run/. The submissions stage
+# needs the submissions key, so it is not run.
+#
+# The template keeps its bucket private (public_read: false), so reading it needs
+# a key. Give this repository a READ-ONLY key for the template's bucket as the
+# secrets TEMPLATE_S3_ACCESS_KEY_ID and TEMPLATE_S3_SECRET_ACCESS_KEY (a dry run
+# never writes to S3, so nothing more is needed). Without them (a pull request from
+# a fork has none) only the config check runs, and the run says so.
 #
 # TEMPLATE_REPO (repository variable) names the template repository; while the
 # template is private (staging), TEMPLATE_TOKEN (secret) is a token that can
@@ -37,6 +43,9 @@ jobs:
     env:
       DRY_RUN: 'true'
       DRY_RUN_DIR: dry-run
+      # The engine reads the main store with these (see credentials in the config).
+      S3_ACCESS_KEY_ID: ${{ secrets.TEMPLATE_S3_ACCESS_KEY_ID }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.TEMPLATE_S3_SECRET_ACCESS_KEY }}
     defaults:
       run:
         working-directory: template
@@ -61,7 +70,19 @@ jobs:
       - name: check
         run: Rscript -e 'challengeci::run_stage()' check
 
+      # The other stages read the template's bucket, which needs the key.
+      - name: Is there a read key?
+        id: key
+        run: |
+          if [ -n "$S3_ACCESS_KEY_ID" ] && [ -n "$S3_SECRET_ACCESS_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No TEMPLATE_S3_ACCESS_KEY_ID / TEMPLATE_S3_SECRET_ACCESS_KEY, so only the config check ran. Add a read-only key for the template's bucket to run every stage."
+          fi
+
       - name: targets
+        if: steps.key.outputs.present == 'true'
         run: |
           scripts=$(Rscript -e 'cat(unlist(lapply(challengeci::read_config()$target_groups, `[[`, "targets_script")), sep = "\n")')
           for script in $scripts; do
@@ -71,18 +92,23 @@ jobs:
           done
 
       - name: baselines
+        if: steps.key.outputs.present == 'true'
         run: Rscript -e 'challengeci::run_stage()' baselines daily
 
       - name: bundle
+        if: steps.key.outputs.present == 'true'
         run: Rscript -e 'challengeci::run_stage()' bundle
 
       - name: score
+        if: steps.key.outputs.present == 'true'
         run: Rscript -e 'challengeci::run_stage()' score
 
       - name: catalog
+        if: steps.key.outputs.present == 'true'
         run: Rscript -e 'challengeci::run_stage()' catalog
 
       - name: dashboard
+        if: steps.key.outputs.present == 'true'
         run: Rscript -e 'challengeci::run_stage()' dashboard site
 
       - name: Keep the dry-run output

@@ -191,6 +191,7 @@ release it:
 |---|---|---|
 | `RELEASE_TOKEN` | the `release` workflow | A fine-grained token for the **engine** repository with *Contents* and *Workflows* read and write (the release commit changes workflow files). |
 | `TEMPLATE_TOKEN` | `template-check` | A token that can read the template repository, only while it is private. Optional once it is public. |
+| `TEMPLATE_S3_ACCESS_KEY_ID`, `TEMPLATE_S3_SECRET_ACCESS_KEY` | `template-check` | A **read-only** S3 key for the template challenge's bucket, so the workflow can dry-run every stage of a template that keeps its bucket private. Create it like the participants' key (see *The store key*, *Type of Access: Read Only*). Without it only the config check runs. |
 
 ## 6. Set up registration and variable metadata
 
