@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   run:
-    uses: eco4cast/challenge-ci/.github/workflows/_docker.yaml@main
+    uses: rqthomas/challenge-ci/.github/workflows/_docker.yaml@v0.1.0-rc.3
     with:
       dry_run: ${{ inputs.dry_run || false }}
     secrets: inherit
