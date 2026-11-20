@@ -24,7 +24,7 @@ env:
 
 jobs:
   config:
-    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+    uses: rqthomas/challenge-ci/.github/workflows/_config.yaml@v0.1.0-rc.6
 
   scoring:
     needs: config
@@ -42,11 +42,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: eco4cast/challenge-ci/.github/actions/setup-challenge@main
+      - uses: rqthomas/challenge-ci/.github/actions/setup-challenge@v0.1.0-rc.6
 
       - name: Score forecasts
         run: Rscript -e 'challengeci::run_stage()' score $SINCE
 
-      - uses: eco4cast/challenge-ci/.github/actions/healthcheck@main
+      - uses: rqthomas/challenge-ci/.github/actions/healthcheck@v0.1.0-rc.6
         with:
           name: scoring

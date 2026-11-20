@@ -1,6 +1,6 @@
 Package: challengeci
 Title: Shared Plumbing for Ecological Forecasting Challenge CI
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R:
     person("Quinn", "Thomas", , "rqthomas@vt.edu", role = c("aut", "cre"))
 Description: Functions used by the GitHub Actions workflows that run an

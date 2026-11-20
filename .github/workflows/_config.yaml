@@ -55,7 +55,7 @@ jobs:
           }
           {
             # Default: the engine's base image of this release (stamped by release.yaml).
-            echo "image=$(yq '.ci.docker_image // "ghcr.io/eco4cast/challenge-ci:main"' "$CONFIG")"
+            echo "image=$(yq '.ci.docker_image // "ghcr.io/rqthomas/challenge-ci:v0.1.0-rc.6"' "$CONFIG")"
             echo "large_runner=$(yq '.ci.large_runner // "ubuntu-latest"' "$CONFIG")"
             echo "targets=$(yq -o=json -I=0 '[.target_groups | to_entries | .[] |
               select(.value.targets_script != null) |
