@@ -48,3 +48,55 @@ test_that("score_rows() matches score4cast", {
   expect_equal(unique(scores$crps), expected)
   expect_true(all(c("logs", "mean", "quantile97.5", "observation") %in% names(scores)))
 })
+
+# A local stand-in for the buckets: bundled forecasts (and scores) under `root`,
+# and targets in a local file. Returns the config.
+local_scoring_store <- function(root, with_forecasts = TRUE, env = parent.frame()) {
+  withr::local_envvar(DRY_RUN = "true", DRY_RUN_DIR = file.path(root, "dry"), .local_envir = env)
+  cfg <- test_config()
+  targets <- tibble::tibble(
+    project_id = "testcast", site_id = "AAAA", duration = "P1D", variable = "temperature",
+    datetime = as.POSIXct(c("2024-03-02", "2024-03-03"), tz = "UTC"), observation = c(10, 11)
+  )
+  cfg$target_groups$Lakes$targets_file <- file.path(root, "targets.csv")
+  readr::write_csv(targets, cfg$target_groups$Lakes$targets_file)
+
+  if (with_forecasts) {
+    fc <- example_forecast()
+    fc$pub_datetime <- as.POSIXct("2024-03-01 12:00:00", tz = "UTC")
+    dir.create(file.path(root, "forecasts"), recursive = TRUE)
+    duckdbfs::write_dataset(fc, file.path(root, "forecasts", "bundled-parquet"),
+                            format = "parquet", partitioning = c("project_id", "variable"))
+  }
+  testthat::local_mocked_bindings(
+    bucket_uri = function(cfg, key, ..., scheme = "s3", alias = NULL) {
+      base <- switch(key, forecasts_bucket = "forecasts", scores_bucket = "scores",
+                     scratch = "scratch")
+      path <- paste(c(root, base, ...), collapse = "/")
+      # duckdbfs adds the glob to a remote folder itself; a local folder needs it.
+      if (basename(path) == "bundled-parquet") paste0(path, "/**") else path
+    },
+    duckdb_connect = function(...) invisible(NULL),
+    .env = env
+  )
+  cfg
+}
+
+test_that("a new challenge with no scores yet is scored from scratch", {
+  skip_if_not_installed("duckdbfs")
+  root <- withr::local_tempdir()
+  cfg <- local_scoring_store(root)
+  conn <- local_duckdb()
+  groups <- suppressMessages(prepare_scoring(cfg, since = as.Date("2024-01-01"), conn = conn))
+  expect_equal(groups$model_id, "my-model")
+  expect_equal(groups$variable, "temperature")
+})
+
+test_that("with no bundled forecasts yet there is nothing to score", {
+  skip_if_not_installed("duckdbfs")
+  root <- withr::local_tempdir()
+  cfg <- local_scoring_store(root, with_forecasts = FALSE)
+  conn <- local_duckdb()
+  groups <- suppressMessages(prepare_scoring(cfg, since = as.Date("2024-01-01"), conn = conn))
+  expect_equal(nrow(groups), 0)
+})

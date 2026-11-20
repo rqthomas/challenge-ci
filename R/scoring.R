@@ -80,21 +80,30 @@ prepare_scoring <- function(cfg, since = Sys.Date() - lubridate::dmonths(6),
     dplyr::summarise(last = max(.data$datetime, na.rm = TRUE)) |>
     dplyr::pull(.data$last)
 
-  forecasts <- duckdbfs::open_dataset(
+  # Either dataset may not exist yet: a new challenge has no bundled forecasts
+  # until bundling has run, and no scores until the first scoring run. A missing
+  # dataset is NULL, not an error.
+  forecasts <- open_dataset_if_any(
     bucket_uri(cfg, "forecasts_bucket", "bundled-parquet"), conn = conn
-  ) |>
-    dplyr::filter(.data$project_id == project, .data$datetime > since,
-                  .data$datetime <= last_observed, !is.na(.data$model_id),
-                  !is.na(.data$parameter), !is.na(.data$prediction)) |>
-    # Older bundles say "ensemble"; without this they would be rescored forever.
-    dplyr::mutate(family = ifelse(.data$family == "ensemble", "sample", .data$family)) |>
-    filter_max_horizon(cfg)
+  )
+  if (!is.null(forecasts)) {
+    forecasts <- forecasts |>
+      dplyr::filter(.data$project_id == project, .data$datetime > since,
+                    .data$datetime <= last_observed, !is.na(.data$model_id),
+                    !is.na(.data$parameter), !is.na(.data$prediction)) |>
+      # Older bundles say "ensemble"; without this they would be rescored forever.
+      dplyr::mutate(family = ifelse(.data$family == "ensemble", "sample", .data$family)) |>
+      filter_max_horizon(cfg)
+  }
 
-  scores <- duckdbfs::open_dataset(
+  scores <- open_dataset_if_any(
     bucket_uri(cfg, "scores_bucket", "bundled-parquet"), conn = conn
-  ) |>
-    dplyr::filter(.data$project_id == project, .data$datetime > since,
-                  !is.na(.data$observation))
+  )
+  if (!is.null(scores)) {
+    scores <- scores |>
+      dplyr::filter(.data$project_id == project, .data$datetime > since,
+                    !is.na(.data$observation))
+  }
 
   # Copying the subsets to scratch first, then joining the copies, is much
   # faster and lighter on memory than joining the remote datasets directly.
@@ -102,13 +111,15 @@ prepare_scoring <- function(cfg, since = Sys.Date() - lubridate::dmonths(6),
   # Each copy is NULL when it has no rows: duckdb writes no files for an empty
   # result, so there is nothing to open (a new challenge, or all scored).
   copy <- function(data, folder) {
+    if (is.null(data)) return(NULL)
     data |>
       dplyr::group_by(.data$variable) |>
       duckdbfs::write_dataset(scratch_uri(cfg, folder), conn = conn)
     open_scratch(cfg, folder, conn)
   }
   forecasts <- copy(forecasts, "forecasts")
-  scores <- copy(dplyr::select(scores, dplyr::all_of(score_key_cols)), "scores")
+  if (!is.null(scores)) scores <- dplyr::select(scores, dplyr::all_of(score_key_cols))
+  scores <- copy(scores, "scores")
   targets <- copy(targets, "targets")
   nothing <- tibble::tibble(project_id = character(), duration = character(),
                             variable = character(), model_id = character(),

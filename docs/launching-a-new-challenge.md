@@ -160,10 +160,71 @@ site with `Rscript -e 'challengeci::run_stage()' dashboard site` and open
 
 ## 9. Set up publishing
 
-- **Catalog.** Create an empty repository for the STAC catalog and set
-  `catalog_config$catalog_repo` and `catalog_config$catalog_path`.
-- **Dashboard.** Create an empty `gh-pages` branch and turn on GitHub Pages
-  for it. `challenge_url` should be its address.
+### The catalog
+
+Create an empty repository for the STAC catalog and set
+`catalog_config$catalog_repo` and `catalog_config$catalog_path`.
+
+### The dashboard (GitHub Pages)
+
+The `dashboard` workflow builds the site and pushes it to the `gh-pages` branch
+of the challenge repository; GitHub Pages then serves that branch. The workflow
+does **not** create the branch, so it must exist before the first run, and Pages
+must be told to serve it. Do these four things once. The repository must be
+public (Pages on a private repository needs a paid GitHub plan).
+
+**1. Create the `gh-pages` branch.** From a clone of the challenge repository
+(replace `main` if your default branch has another name):
+
+```sh
+git switch --orphan gh-pages          # a branch with no history or files
+touch .nojekyll                       # tells Pages to serve the files as they are
+git add .nojekyll
+git commit -m "Create gh-pages"
+git push -u origin gh-pages
+git switch main                       # back to the code
+```
+
+Commit or stash any uncommitted changes first: `git switch --orphan` removes the
+tracked files from your working folder until you switch back (they are not lost).
+`gh-pages` holds only the built site; never edit it by hand. (If the push is
+refused, check that you may push to the repository.)
+
+**2. Turn on GitHub Pages for it.** In the repository on github.com, open
+**Settings → Pages**. Under *Build and deployment* set **Source** to *Deploy from a
+branch*, **Branch** to `gh-pages` and the folder to `/ (root)`, and click
+**Save**. The page now shows the address of the site,
+`https://<owner>.github.io/<repository>/`.
+
+**3. Allow the workflow to push.** The `dashboard` trigger workflow asks for
+`permissions: contents: write`, which is enough unless your organization limits
+what workflows may do. If a run fails with a 403 on the push, open
+**Settings → Actions → General → Workflow permissions** (in the repository, and
+in the organization's settings if the option is greyed out) and choose *Read and
+write permissions*.
+
+**4. Set `challenge_url`** in `challenge_configuration.yaml` to the address from
+step 2 (or your own domain, if you add one under **Settings → Pages → Custom
+domain**). The site's links and sitemap use it.
+
+**Publish it.** Open the repository's **Actions** tab, choose the *dashboard*
+workflow, click **Run workflow** and leave *Dry run* **unticked**. It builds the
+site, commits it to `gh-pages` and pushes. A second run named *pages build and
+deployment* then appears; when it finishes (a minute or two) the site is live at
+the address from step 2. After that the daily schedule keeps it current.
+
+*If something goes wrong*
+
+| Symptom | Cause and fix |
+|---|---|
+| The workflow fails at "Publish to gh-pages" with `pathspec 'gh-pages' did not match` | The branch does not exist on GitHub: do step 1 and push it. |
+| The push fails with 403 | Workflows may not write: do step 3. |
+| The workflow is green but the address shows 404 | Pages is not serving the branch (step 2), or the first deployment has not finished; look for *pages build and deployment* in Actions. |
+| The site is up but unstyled or its pages are missing | `.nojekyll` is missing from the root of `gh-pages`; add it (step 1) and run the workflow again. |
+| The site shows old content | Run the workflow again; browsers and GitHub cache pages for a few minutes. |
+
+To check the site before publishing, run the workflow with *Dry run* ticked: the
+built site is attached to the run as the `dry-run-dashboard` artifact.
 
 ## 10. Set the schedules
 

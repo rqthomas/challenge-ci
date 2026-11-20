@@ -34,6 +34,12 @@ behaviour.
   `_register.yaml` workflow, a trigger (`inst/workflows/register.yaml`) and an
   issue form (`inst/issue_forms/register-forecast-repo.yml`). A bot checks the
   repository, commits its row to the registry file and answers on the issue.
+- Scoring no longer fails on a new challenge: with no bundled scores yet it scores
+  everything, and with no bundled forecasts yet it finds nothing to score (it
+  stopped with "No files found that match the pattern .../scores/bundled-parquet").
+- The launch guide's "Set up publishing" step now gives the exact commands and
+  settings for creating the `gh-pages` branch and turning on GitHub Pages, with a
+  troubleshooting table.
 - `public_read: false` keeps the main store private: every read the engine does
   (bundling, scoring, catalog, dashboard, baselines, the targets check) uses the
   key, and targets files are downloaded with it instead of fetched by URL. The
