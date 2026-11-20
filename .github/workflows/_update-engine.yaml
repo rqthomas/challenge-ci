@@ -1,0 +1,148 @@
+# Move a challenge repository to another version of the engine.
+#
+# Rewrites every reference to the engine's reusable workflows and actions
+# (`<owner>/challenge-ci/.github/workflows/_scoring.yaml@v0.4.0`, ...) in the
+# challenge's workflows to the chosen release, and also a `challenge/Dockerfile`
+# or config that names the engine's image, then opens a pull request with the
+# change. The check workflow runs on the pull request; merge it to switch.
+#
+# Reusable: a challenge repository calls it from a short trigger workflow (see
+# inst/workflows/update-engine.yaml in the engine), with `secrets: inherit`.
+#
+# Needs the secret WORKFLOW_TOKEN: GitHub refuses to let the built-in
+# GITHUB_TOKEN change files under .github/workflows, and a pull request opened by
+# GITHUB_TOKEN does not start the check workflow. Use a fine-grained personal
+# access token for the challenge repository only, with Contents, Pull requests
+# and Workflows: read and write.
+name: update-engine
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: >
+          Engine version to move to, e.g. 0.4.0 or 0.4.0-rc.1. Empty: the latest
+          release (see include_prereleases).
+        type: string
+        default: ''
+      include_prereleases:
+        description: When no version is given, take the newest release even if it is a release candidate.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+      INPUT_VERSION: ${{ inputs.version }}
+      INCLUDE_PRERELEASES: ${{ inputs.include_prereleases }}
+    steps:
+      - name: Check the token
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Set the secret WORKFLOW_TOKEN (Contents, Pull requests and Workflows: read and write); see the header of _update-engine.yaml."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.WORKFLOW_TOKEN }}
+
+      - name: Find the engine and the release
+        id: release
+        run: |
+          set -euo pipefail
+
+          # The engine repository is the one the workflows already call.
+          engines=$(grep -rhoE '[A-Za-z0-9_.-]+/challenge-ci/\.github/(workflows|actions)/' .github | sed -E 's#/\.github/.*##' | sort -u || true)
+          if [ "$(printf '%s\n' "$engines" | grep -c .)" -ne 1 ]; then
+            echo "::error::Expected the workflows to call one engine repository (OWNER/challenge-ci), found: ${engines:-none}"
+            exit 1
+          fi
+          engine="$engines"
+
+          version="${INPUT_VERSION#v}"
+          if [ -z "$version" ]; then
+            if [ "$INCLUDE_PRERELEASES" = "true" ]; then
+              tag=$(gh release list -R "$engine" --exclude-drafts --limit 1 --json tagName -q '.[0].tagName')
+            else
+              tag=$(gh release view -R "$engine" --json tagName -q .tagName) || {
+                echo "::error::$engine has no stable release yet: give a version, or tick include_prereleases."
+                exit 1
+              }
+            fi
+          else
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+              echo "::error::Version must look like 0.4.0 or 0.4.0-rc.1 (no leading v)."
+              exit 1
+            fi
+            tag="v$version"
+            gh release view "$tag" -R "$engine" > /dev/null || {
+              echo "::error::$engine has no release $tag."
+              exit 1
+            }
+          fi
+          echo "Engine $engine, release $tag"
+          echo "engine=$engine" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Point the workflows at the release
+        id: rewrite
+        env:
+          ENGINE: ${{ steps.release.outputs.engine }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          owner="${ENGINE%%/*}"
+
+          # uses: OWNER/challenge-ci/.github/workflows/_x.yaml@old -> @TAG, in the
+          # challenge's workflows and local actions.
+          files=$(grep -rlE "${ENGINE}/\.github/(workflows|actions)/" .github || true)
+          for f in $files; do
+            sed -E -i.bak "s#(${ENGINE}/\.github/(workflows|actions)/[A-Za-z0-9_./-]+)@[A-Za-z0-9_.-]+#\1@${TAG}#g" "$f"
+          done
+
+          # The engine's image, where a Dockerfile or the config names it.
+          for f in challenge/Dockerfile challenge_configuration.yaml; do
+            if [ -f "$f" ]; then
+              sed -E -i.bak "s#(ghcr\.io/${owner}/challenge-ci:)[A-Za-z0-9_.-]+#\1${TAG}#g" "$f"
+            fi
+          done
+          find . -name '*.bak' -not -path './.git/*' -delete
+
+          if git diff --quiet; then
+            echo "Already on $TAG; nothing to change."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git --no-pager diff --stat
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open a pull request
+        if: steps.rewrite.outputs.changed == 'true'
+        env:
+          ENGINE: ${{ steps.release.outputs.engine }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          branch="update-engine-$TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add -A
+          git commit -m "Update challenge-ci to $TAG"
+          git push --force origin "$branch"
+
+          if [ -n "$(gh pr list --head "$branch" --state open --json number -q '.[0].number')" ]; then
+            echo "A pull request for $branch is already open; it now has the latest commit."
+            exit 0
+          fi
+          base=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+          gh pr create --base "$base" --head "$branch" \
+            --title "Update challenge-ci to $TAG" \
+            --body "Moves every workflow (and any engine image reference) to \`$TAG\`. See the [release notes](https://github.com/$ENGINE/releases/tag/$TAG) before merging; a minor release adds only, a major one says what to change. Merge once the check passes, then run the workflows you want to confirm."

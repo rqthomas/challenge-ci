@@ -29,6 +29,7 @@ challenge sets its own. "Large" means the self-hosted runner named by
 | Trigger (reusable workflow) | Schedule | Runner | Runs | Healthcheck |
 |---|---|---|---|---|
 | `submissions.yaml` (`_submissions.yaml`) | every 2 h | GitHub | `run_stage() submissions` | `submissions` |
+| `update-engine.yaml` (`_update-engine.yaml`) | by hand (optional weekly) | GitHub | opens a pull request moving the workflows to a new engine release | |
 | `register.yaml` (`_register.yaml`) | when a registration issue is opened or edited | GitHub | `run_stage() register` | |
 | `bundling.yaml` (`_bundling.yaml`) | every 6 h | GitHub | `run_stage() bundle forecasts`, `... summaries` | `bundling` |
 | `scoring.yaml` (`_scoring.yaml`) | 10:00 | large | `run_stage() score [since]` | `scoring` |
@@ -61,10 +62,54 @@ no URL in the config is simply not monitored; add one to start monitoring it.
 
 ## Upgrading the engine
 
-Change the version after `@` in every trigger workflow (and the `FROM` tag in
-`challenge/Dockerfile`, if the challenge has one) to the new release, after
-reading its `CHANGELOG.md` section. Dependabot can open these pull requests:
-add `.github/dependabot.yml` with the `github-actions` ecosystem.
+A challenge pins the engine by the version after `@` in each of its trigger
+workflows (`.../_scoring.yaml@v0.4.0`), and optionally in the `FROM` tag of
+`challenge/Dockerfile` and in `ci.docker_image`. Read the release's
+`CHANGELOG.md` section first: a minor release only adds, a major one says what
+to change.
+
+**With the `update-engine` workflow (recommended).** Copy
+`inst/workflows/update-engine.yaml` to `.github/workflows/` of the challenge
+repository. Run it from the Actions tab (*update-engine → Run workflow*) with a
+version such as `0.4.0` (no leading `v`), or leave the version empty for the latest
+stable release (tick *include prereleases* to take a release candidate). It
+checks that the release exists, rewrites **every** engine reference in
+`.github/workflows` and `.github/actions` (this workflow's own included) and the
+engine image in `challenge/Dockerfile` and `challenge_configuration.yaml`, and
+opens a pull request named `update-engine-v<version>`. The challenge's `check`
+workflow runs on it; merge it to switch, then run the workflows you want to
+confirm. If you are already on that version it says so and opens nothing.
+Uncomment the `schedule:` in the trigger to check for a new stable release every
+Monday.
+
+It needs a repository secret, **`WORKFLOW_TOKEN`**, because GitHub does not let
+the built-in token change files under `.github/workflows` or start the check on
+a pull request it opened. Create it once:
+
+1. On github.com open **Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens → Generate new token**.
+2. *Resource owner*: the account or organization that owns the challenge
+   repository. *Repository access*: **Only select repositories**, and choose the
+   challenge repository. Set an expiry you can live with (and renew it then).
+3. *Repository permissions*: **Contents**, **Pull requests** and **Workflows**,
+   each *Read and write*. Generate the token and copy it.
+4. Store it: `gh secret set WORKFLOW_TOKEN -R <owner>/<repo>` and paste it when
+   asked (or Settings → Secrets and variables → Actions → New repository secret).
+
+(An organization may need an owner to approve fine-grained tokens first.)
+
+**By hand.** From the root of the challenge repository, with the new tag in `NEW`:
+
+```sh
+NEW=v0.4.0
+grep -rl 'challenge-ci/.github' .github | xargs sed -i.bak -E "s#(challenge-ci/\.github/(workflows|actions)/[A-Za-z0-9_./-]+)@[A-Za-z0-9_.-]+#\1@$NEW#g"
+find . -name '*.bak' -delete
+```
+
+Dependabot can also open these pull requests (add `.github/dependabot.yml` with the
+`github-actions` ecosystem). That route has not been tried here; check that it
+proposes release candidates if you pin one, and note that it leaves the Dockerfile
+and `ci.docker_image` alone.
 
 ## Secrets
 
@@ -79,6 +124,7 @@ reusable workflows map secrets onto them.
 | `EFI_NRP_KEY`, `EFI_NRP_SECRET` | same | scoring, targets | the scratch store (`scratch`) |
 | `NEON_TOKEN` | same | targets | NEON API downloads (NEON-based challenges) |
 | `CATALOG_TOKEN` | `EXTERNAL_GH_PAT` | catalog | pushing to the catalog repository |
+| `WORKFLOW_TOKEN` | — | update-engine | opening the pull request that changes the workflow files (see Upgrading the engine) |
 | `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | — | challenge-image | pushing the challenge image to Docker Hub |
 | `PAT` | build secret `github_pat` | challenge-image | GitHub installs during the build, without rate limits (optional) |
 

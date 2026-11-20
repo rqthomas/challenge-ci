@@ -34,6 +34,10 @@ behaviour.
   `_register.yaml` workflow, a trigger (`inst/workflows/register.yaml`) and an
   issue form (`inst/issue_forms/register-forecast-repo.yml`). A bot checks the
   repository, commits its row to the registry file and answers on the issue.
+- `update-engine` workflow (`_update-engine.yaml`, trigger in
+  `inst/workflows/update-engine.yaml`): moves every workflow of a challenge to a
+  chosen engine release, or the latest, and opens a pull request. Needs the
+  secret `WORKFLOW_TOKEN`; see "Upgrading the engine" in `docs/operations.md`.
 - Scoring no longer fails on a new challenge: with no bundled scores yet it scores
   everything, and with no bundled forecasts yet it finds nothing to score (it
   stopped with "No files found that match the pattern .../scores/bundled-parquet").
