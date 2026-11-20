@@ -24,7 +24,7 @@ env:
 
 jobs:
   config:
-    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+    uses: rqthomas/challenge-ci/.github/workflows/_config.yaml@v0.1.0-rc.4
 
   register:
     needs: config
@@ -42,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: eco4cast/challenge-ci/.github/actions/setup-challenge@main
+      - uses: rqthomas/challenge-ci/.github/actions/setup-challenge@v0.1.0-rc.4
 
       - name: Register the repository
         run: Rscript -e 'challengeci::run_stage()' register
