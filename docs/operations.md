@@ -154,7 +154,8 @@ paths, `<alias>/<bucket>/<key>`, which `bucket_uri(scheme = "remote")` builds.
   aborted so no parts are left behind (options `challengeci.multipart_threshold` and
   `challengeci.part_size`, in bytes). `upload_dir()` skips files already there with
   the same size and MD5 and, on Linux, sends four at a time
-  (`challengeci.upload_workers`).
+  (`challengeci.upload_workers`; two where `_R_CHECK_LIMIT_CORES_` is set, as it is
+  during `R CMD check`, because the parallel package refuses more).
 - paws signs requests for the store's region and addresses buckets path-style, so a
   custom endpoint such as Backblaze B2, OSN or Ceph works. It sends a checksum only
   where a request needs one, because some S3-compatible stores reject the extra

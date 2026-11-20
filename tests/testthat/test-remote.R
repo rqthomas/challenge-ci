@@ -181,6 +181,20 @@ test_that("upload_dir() uploads a folder, then only what changed", {
   expect_equal(readLines(dest), "kept")
 })
 
+test_that("upload workers are capped where the parallel package would refuse more", {
+  withr::local_options(challengeci.upload_workers = 4)
+  withr::local_envvar(`_R_CHECK_LIMIT_CORES_` = "")
+  expect_equal(upload_workers(), 4)
+  withr::local_envvar(`_R_CHECK_LIMIT_CORES_` = "false")
+  expect_equal(upload_workers(), 4)
+  for (setting in c("TRUE", "true", "warn")) {
+    withr::local_envvar(`_R_CHECK_LIMIT_CORES_` = setting)
+    expect_equal(upload_workers(), 2)
+  }
+  withr::local_options(challengeci.upload_workers = 1)
+  expect_equal(upload_workers(), 1)
+})
+
 test_that("upload_dir() with several workers uploads everything", {
   skip_on_os("windows")
   # Forked workers cannot share the in-memory fake, so each upload writes into a

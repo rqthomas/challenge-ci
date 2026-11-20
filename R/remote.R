@@ -248,8 +248,7 @@ remote_put_dir <- function(from, to) {
       NA_character_
     }, error = function(e) paste0(file, ": ", conditionMessage(e)))
   }
-  workers <- getOption("challengeci.upload_workers",
-                       if (identical(Sys.info()[["sysname"]], "Linux")) 4L else 1L)
+  workers <- upload_workers()
   failures <- if (length(todo) > 1 && workers > 1 && .Platform$OS.type == "unix") {
     unlist(parallel::mclapply(todo, send, mc.cores = workers))
   } else {
@@ -261,6 +260,19 @@ remote_put_dir <- function(from, to) {
                      rlang::set_names(failures, "x")))
   }
   invisible(to)
+}
+
+# How many files to upload at once: the `challengeci.upload_workers` option, by
+# default 4 on Linux (forking is unreliable elsewhere) and 1 otherwise. Where
+# `_R_CHECK_LIMIT_CORES_` is set (R CMD check does, and so may an image) the
+# parallel package refuses more than 2 processes and stops with an error, so
+# there it is capped at 2.
+upload_workers <- function() {
+  workers <- getOption("challengeci.upload_workers",
+                       if (identical(Sys.info()[["sysname"]], "Linux")) 4L else 1L)
+  limit <- tolower(Sys.getenv("_R_CHECK_LIMIT_CORES_", ""))
+  if (nzchar(limit) && limit != "false") workers <- min(workers, 2L)
+  workers
 }
 
 # Move one object within a store: a server-side copy, then a delete.
