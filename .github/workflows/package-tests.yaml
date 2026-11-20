@@ -37,6 +37,22 @@ jobs:
       - name: Unit tests
         run: Rscript -e 'devtools::test(stop_on_failure = TRUE)'
 
+      # The committed docs were written by the roxygen2 named in DESCRIPTION
+      # (Config/roxygen2/version; RoxygenNote in older ones). The image carries
+      # whichever roxygen2 is newest when it is built, and a different version
+      # formats NAMESPACE and the Rd files differently, so install the version the
+      # docs were written with before checking them. (A no-op while they match.)
+      - name: Use the roxygen2 version the docs were written with
+        run: |
+          Rscript -e '
+            d <- read.dcf("DESCRIPTION", c("Config/roxygen2/version", "RoxygenNote"))
+            wanted <- na.omit(d[1, ])[[1]]
+            if (packageVersion("roxygen2") != wanted) {
+              cat("Installing roxygen2", wanted, "\n")
+              remotes::install_version("roxygen2", version = wanted, upgrade = "never", quiet = TRUE)
+            }
+            cat("roxygen2", as.character(packageVersion("roxygen2")), "\n")'
+
       - name: Docs are up to date
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"

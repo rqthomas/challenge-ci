@@ -76,6 +76,7 @@ From the engine's root, in R:
 ```r
 devtools::load_all()   # reload after editing R/
 devtools::document()   # after changing roxygen comments (#') or adding a function
+                       # (with the roxygen2 version named in DESCRIPTION; see below)
 devtools::test()       # run tests/testthat
 devtools::check()      # full R CMD check before opening a PR
 lintr::lint_dir("R")   # style (rules in .lintr)
@@ -83,7 +84,17 @@ lintr::lint_dir("R")   # style (rules in .lintr)
 
 Commit the regenerated `NAMESPACE` and `man/` files with your change. The
 `package-tests` workflow runs the tests and `R CMD check` in the base image on
-every pull request.
+every pull request, and fails if `devtools::document()` changes `NAMESPACE` or
+`man/`.
+
+**Use the roxygen2 version named in `DESCRIPTION`** (`Config/roxygen2/version`, 8.1.1
+at the moment). Different versions format the generated files differently (import
+lines, cross-reference links, the package page), so the `package-tests` workflow
+installs the version `DESCRIPTION` names before checking, and a contributor on another
+version would see the check fail. To match it locally:
+`remotes::install_version("roxygen2", "<version>")`. To move to a newer roxygen2,
+install it, run `devtools::document()`, and commit everything it changes, `DESCRIPTION`
+included; the workflow then follows.
 
 ## Releasing
 

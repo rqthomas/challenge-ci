@@ -121,5 +121,7 @@ export(write_noaa)
 export(write_stac)
 export(write_submission_results)
 export(write_targets)
-importFrom(rlang,"%||%")
-importFrom(rlang,.data)
+importFrom(rlang,
+  "%||%",
+  .data
+)

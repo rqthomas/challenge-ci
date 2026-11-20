@@ -24,5 +24,10 @@ file. Set \code{DRY_RUN=true} to send writes to a local folder instead of S3 (se
 \author{
 \strong{Maintainer}: Quinn Thomas \email{rqthomas@vt.edu}
 
+Authors:
+\itemize{
+  \item Quinn Thomas \email{rqthomas@vt.edu}
+}
+
 }
 \keyword{internal}

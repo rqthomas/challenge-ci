@@ -75,14 +75,14 @@ open-ended range.}
 \item{path}{File to write.}
 }
 \value{
-A list ready for \code{\link[jsonlite:read_json]{jsonlite::write_json()}}; \code{stac_datetime()} a
+A list ready for \code{\link[jsonlite:write_json]{jsonlite::write_json()}}; \code{stac_datetime()} a
 character vector; \code{stac_bbox()} a numeric vector (min lon, min lat,
 max lon, max lat); \code{write_stac()} \code{path}, invisibly.
 }
 \description{
 \itemize{
 \item \code{stac_link()}: one link object. Returns \code{NULL} when \code{href} is \code{NULL}, so
-optional links can be dropped with \code{\link[purrr:keep]{purrr::compact()}}.
+optional links can be dropped with \code{\link[purrr:compact]{purrr::compact()}}.
 \item \code{stac_standard_links()}: the parent, root, self, cite-as, about and
 describedby links every collection in the catalog has.
 \item \code{stac_collection()}: a STAC Collection.
