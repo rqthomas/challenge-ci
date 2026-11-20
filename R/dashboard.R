@@ -10,6 +10,7 @@
 #   models.json                every model, for labels and filters
 #   leaderboard/<variable>.json  skill and CRPS by window, horizon and date
 #   forecasts/<variable>__<site>.json  the latest and a scored forecast, with observations
+#   targets/<variable>.json    the observations at the focal sites, for the targets page
 #   models/<model_id>.json     a model's registration
 #   results/<model_id>.json    what happened to each file a model submitted
 #   variables.csv, sites.csv   for the pages that render tables in R
@@ -74,7 +75,11 @@ dashboard_lookback_days <- function(duration) {
 #'   first `n_plot_sites` of the group's `focal_sites`.
 #' @export
 plot_sites <- function(cfg) {
-  n <- dashboard_settings(cfg)$n_plot_sites
+  focal_site_table(cfg, dashboard_settings(cfg)$n_plot_sites)
+}
+
+# The first `n` focal sites of every group, crossed with the group's variables.
+focal_site_table <- function(cfg, n = Inf) {
   sites <- purrr::imap(cfg$target_groups, function(settings, group) {
     focal <- as.character(unlist(settings$focal_sites))
     tibble::tibble(group = group, site_id = utils::head(focal, n))
@@ -115,7 +120,7 @@ stage_dashboard_data <- function(cfg, out_dir = file.path("dashboard", "data"),
         open_dataset_if_any(conn = conn)
     )
   })
-  observations <- plot_observations(cfg, plot_sites(cfg), now)
+  observations <- focal_observations(cfg)
   registered <- read_registered_models(cfg)
   stats <- dashboard_stats(cfg, conn, now)
   write_dashboard_data(cfg, out_dir, now, inputs, observations, registered, stats, variables, conn)
@@ -138,7 +143,7 @@ dashboard_variables <- function(cfg, metadata = read_variable_metadata(cfg)) {
 
 # Writes the data contract from what was read: `inputs` has, per duration, the
 # `summaries` and `scores` as lazy tables (or NULL); `observations` are the
-# targets at the plot sites; `registered` the models from
+# targets at the focal sites (see focal_observations()); `registered` the models from
 # read_registered_models(); `stats` the headline numbers. No bucket is read
 # here, so tests can run it on local files.
 write_dashboard_data <- function(cfg, out_dir, now, inputs, observations, registered, stats,
@@ -186,6 +191,8 @@ write_dashboard_data <- function(cfg, out_dir, now, inputs, observations, regist
         models_by_variable[[m]] <- c(models_by_variable[[m]], v$id)
       }
       scored_models <- union(scored_models, names(board$models))
+      write_dashboard_json(targets_json(v, observations, now),
+                           file.path(out_dir, "targets", paste0(v$id, ".json")))
       mine <- sites$variable == v$variable & sites$duration == v$duration
       for (site in unique(sites$site_id[mine])) {
         forecasts <- forecast_json(v, site, latest, scored, observations, now)

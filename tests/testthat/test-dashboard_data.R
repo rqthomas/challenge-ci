@@ -142,6 +142,51 @@ test_that("forecast files hold the latest and scored forecasts with observations
   expect_length(none$sets, 0)
 })
 
+test_that("targets files hold every focal site's observations", {
+  obs <- tidyr::expand_grid(site_id = c("AAAA", "BBBB"), variable = c("temperature", "oxygen"),
+                            duration = "P1D", day = 0:9) |>
+    dplyr::mutate(datetime = utc("2024-05-01") + day * 86400, observation = day + 0.123456) |>
+    dplyr::select(-day)
+  v <- list(id = "temperature_P1D", variable = "temperature", duration = "P1D")
+  out <- targets_json(v, obs, utc("2024-06-10"))
+  expect_equal(out$variable, "temperature_P1D")
+  expect_setequal(names(out$sites), c("AAAA", "BBBB"))
+  # Daily targets keep just the date; arrays stay arrays.
+  expect_equal(unlist(out$sites$AAAA$t)[1:2], c("2024-05-01", "2024-05-02"))
+  expect_equal(unlist(out$sites$AAAA$v)[2], 1.1235)
+  # Sub-daily ones keep the time.
+  hourly <- dplyr::mutate(obs, datetime = datetime + 3600)
+  expect_equal(unlist(targets_json(v, hourly, utc("2024-06-10"))$sites$AAAA$t)[1],
+               "2024-05-01T01:00:00Z")
+  # Long series are thinned, keeping the first and last point.
+  long <- tibble::tibble(site_id = "AAAA", variable = "temperature", duration = "P1D",
+                         datetime = utc("2000-01-01") + 86400 * 0:9999, observation = 0:9999)
+  thin <- targets_json(v, long, utc("2024-06-10"), max_points = 500)$sites$AAAA
+  expect_lte(length(thin$v), 500)
+  expect_equal(thin$v[[length(thin$v)]], 9999)
+  # No observations: an empty object, not an empty array.
+  expect_equal(as.character(jsonlite::toJSON(targets_json(v, obs[0, ], utc("2024-06-10"))$sites,
+                                             auto_unbox = TRUE)), "{}")
+})
+
+test_that("forecast files keep only the last 120 days of observations", {
+  obs <- tibble::tibble(site_id = "AAAA", variable = "temperature", duration = "P1D",
+                        datetime = utc("2024-01-01") + 86400 * c(0, 30, 150), observation = 1:3)
+  v <- list(id = "temperature_P1D", variable = "temperature", duration = "P1D")
+  now <- utc("2024-06-10")  # 2024-06-10 minus 120 days is 2024-02-11
+  out <- forecast_json(v, "AAAA", empty_dashboard_table("forecasts"), empty_dashboard_table("forecasts"),
+                       obs, now)
+  expect_length(out$obs$v, 1)
+  expect_equal(out$obs$v[[1]], 3)
+})
+
+test_that("focal observations come from every focal site, not just the plot sites", {
+  cfg <- dashboard_test_config()
+  cfg$dashboard$n_plot_sites <- 1
+  expect_equal(unique(focal_site_table(cfg)$site_id), c("BBBB", "AAAA", "CCCC"))
+  expect_equal(unique(plot_sites(cfg)$site_id), "BBBB")
+})
+
 test_that("long forecasts are thinned to a few hundred points", {
   expect_equal(thin_index(10), 1:10)
   idx <- thin_index(5000)
@@ -228,6 +273,7 @@ test_that("write_dashboard_data writes every file of the contract", {
     variables = dashboard_test_variables(cfg))
   files <- list.files(out, recursive = TRUE)
   expect_true(all(c("meta.json", "models.json", "leaderboard/temperature_P1D.json",
+                    "targets/temperature_P1D.json", "targets/richness_P1W.json",
                     "leaderboard/oxygen_P1D.json", "leaderboard/richness_P1W.json",
                     "forecasts/temperature_P1D__AAAA.json", "forecasts/temperature_P1D__BBBB.json",
                     "models/a.json", "models/climatology.json") %in% files))

@@ -10,6 +10,13 @@ groups <- names(cfg$target_groups)
 focal <- purrr::map(cfg$target_groups, function(g) unlist(g$focal_sites))
 ```
 
+<div id="app"><noscript>The charts on this page need JavaScript.</noscript></div>
+
+<script type="module">
+import { init } from "./js/pages/targets.js";
+init();
+</script>
+
 ## Overview: Forecast the targets!
 
 The "targets" are time-series of data for use in model development and forecast evaluation. They are updated as new data are made available.
@@ -52,12 +59,9 @@ render_tabs(purrr::map(groups, function(group) {
     return(list(title = group, text = c(prose, "", md(table)), widget = NULL))
   }
   targets <- readr::read_csv(targets_files(cfg, url), show_col_types = FALSE, progress = FALSE)
-  plot <- targets |>
-    dplyr::filter(site_id %in% focal[[group]], !is.na(observation)) |>
-    ggplot(aes(x = datetime, y = observation)) +
-    geom_point(size = 0.5) +
-    facet_grid(variable ~ site_id, scales = "free_y") +
-    theme_bw()
+  # The time series are drawn in the browser (js/pages/targets.js) from the
+  # staged data, like the forecasts on the explorer.
+  chart <- paste0('<div data-targets-group="', group, '"></div>')
   list(
     title = group,
     text = c(prose, "", md(table), "",
@@ -68,8 +72,9 @@ render_tabs(purrr::map(groups, function(group) {
              "```", "",
              "The file contains the following columns:", "",
              md(utils::head(stats::na.omit(targets))), "",
-             "and the time series for the focal sites:"),
-    widget = plot
+             "and the time series at the focal sites:", "", chart),
+    widget = NULL,
+    empty = ""
   )
 }))
 ```
@@ -77,15 +82,21 @@ render_tabs(purrr::map(groups, function(group) {
 ## Explore the sites
 
 ```{r}
+# Zoomed to fit the sites (a few hundred metres to a few hundred kilometres
+# apart, or a continent), not to a fixed view. Nearby markers are clustered
+# only when there are many.
+many <- nrow(sites) > 20
 leaflet::leaflet(sites) |>
-  leaflet::setView(lat = mean(sites$latitude), lng = mean(sites$longitude), zoom = 2) |>
+  leaflet::fitBounds(min(sites$longitude), min(sites$latitude),
+                     max(sites$longitude), max(sites$latitude),
+                     options = list(maxZoom = 13, padding = c(40, 40))) |>
   leaflet::addTiles(group = "OSM") |>
   leaflet::addProviderTiles(leaflet::providers$Esri.WorldImagery, group = "Imagery") |>
   leaflet::addProviderTiles(leaflet::providers$Esri.WorldTopoMap, group = "Topo Map") |>
   leaflet::addLayersControl(baseGroups = c("Imagery", "OSM", "Topo Map")) |>
   leaflet::addMarkers(lng = ~longitude, lat = ~latitude,
                       popup = ~paste0(site_name, " (", site_id, ")"),
-                      clusterOptions = leaflet::markerClusterOptions())
+                      clusterOptions = if (many) leaflet::markerClusterOptions())
 ```
 
 <br /> <br /> The following table lists all the sites in the `r cfg$challenge_long_name`. The columns with theme names say whether the site is in that theme's target file.

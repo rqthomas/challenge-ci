@@ -191,15 +191,41 @@ leaderboard_json <- function(variable_row, cells, windows, baseline, now, exclud
 
 format_utc <- function(x) format(as.POSIXct(x, tz = "UTC"), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
 
-# Observations at the plot sites, for the forecast charts: the last `days` days.
-plot_observations <- function(cfg, sites, now, days = 120) {
-  files <- targets_files(cfg)
-  readr::read_csv(files, col_select = dplyr::any_of(c("site_id", "datetime", "variable",
-                                                      "duration", "observation")),
+# The observations at every group's focal sites, all of their history: what the
+# targets page plots, and (the recent part) what the forecast charts show.
+focal_observations <- function(cfg) {
+  readr::read_csv(targets_files(cfg),
+                  col_select = dplyr::any_of(c("site_id", "datetime", "variable", "duration",
+                                               "observation")),
                   show_col_types = FALSE, progress = FALSE) |>
-    dplyr::filter(!is.na(.data$observation),
-                  as.Date(.data$datetime) >= as.Date(now) - days) |>
-    dplyr::semi_join(sites, by = c("variable", "site_id"))
+    dplyr::filter(!is.na(.data$observation)) |>
+    dplyr::semi_join(focal_site_table(cfg), by = c("variable", "site_id"))
+}
+
+# Times as ISO strings: just the date when every time is midnight UTC (daily
+# and longer targets), which halves the file.
+format_times <- function(x) {
+  x <- as.POSIXct(x, tz = "UTC")
+  if (length(x) > 0 && all(format(x, "%H:%M:%S", tz = "UTC") == "00:00:00")) {
+    format(x, "%Y-%m-%d", tz = "UTC")
+  } else {
+    format_utc(x)
+  }
+}
+
+# The targets file of one variable (see docs/dashboard-data.md): every focal
+# site's observations, thinned to a few thousand points.
+targets_json <- function(variable_row, observations, now, max_points = 4000) {
+  obs <- dplyr::filter(observations, .data$variable == variable_row$variable)
+  if ("duration" %in% names(obs)) obs <- dplyr::filter(obs, .data$duration == variable_row$duration)
+  sites <- purrr::map(split(obs, obs$site_id), function(site) {
+    site <- dplyr::arrange(site, .data$datetime)
+    site <- site[thin_index(nrow(site), max_points), ]
+    list(t = jarr(format_times(site$datetime)), v = jarr(site$observation, 5))
+  })
+  list(schema = dashboard_data_schema, variable = variable_row$id,
+       sites = if (length(sites) > 0) sites else structure(list(), names = character()),
+       updated = format_utc(now))
 }
 
 # Keeps at most `n` evenly spaced elements of an index 1..len.
@@ -228,7 +254,10 @@ forecast_set <- function(df, id) {
 forecast_json <- function(variable_row, site_id, latest, scored, observations, now) {
   variable <- variable_row$variable
   rows <- function(df) dplyr::filter(df, .data$variable == !!variable, .data$site_id == !!site_id)
-  obs <- rows(observations) |> dplyr::arrange(.data$datetime)
+  recent <- as.Date(now) - 120
+  obs <- rows(observations) |>
+    dplyr::filter(as.Date(.data$datetime) >= recent) |>
+    dplyr::arrange(.data$datetime)
   if ("duration" %in% names(obs)) obs <- dplyr::filter(obs, .data$duration == variable_row$duration)
   sets <- purrr::compact(list(forecast_set(rows(latest), "latest"),
                               forecast_set(rows(scored), "scored")))

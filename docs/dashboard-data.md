@@ -33,6 +33,7 @@ outside `A-Za-z0-9_.-` becomes `_`.
 | `models.json` | Every registered or scored model, for labels and filters. |
 | `leaderboard/<id>.json` | Scores of every model for one variable, by window, horizon and date. |
 | `forecasts/<id>__<site>.json` | The latest forecast and a scored one at a plot site, with observations. |
+| `targets/<id>.json` | The observations of one variable at every focal site, for the targets page. |
 | `models/<model>.json` | One model's registration and the variables it has scores for. |
 | `results/<name>.json`, `results/index.json` | What happened to each file a model submitted. Published unless `dashboard$publish_results: false`. |
 | `variables.csv`, `sites.csv` | Not part of the contract: inputs of the pages that build tables in R. |
@@ -96,7 +97,7 @@ models   { <model_id>: {
 
 ```text
 schema, variable, site_id, updated
-obs   {t[], v[]}            observations at the site, the last 120 days
+obs   {t[], v[]}            observations at the site, the last 120 days (full ISO times)
 sets[] {id, reference, models {<model_id>: {d[], m[], l[], u[]}}}
 ```
 
@@ -106,6 +107,19 @@ enough to have observations: 30 days, or a year for weekly variables). `d` is
 days after `reference`, `m` the mean, and `l`, `u` the 95% interval. Long
 forecasts are thinned to at most 400 points. Numbers are rounded to 4
 significant digits.
+
+### `targets/<id>.json`
+
+```text
+schema, variable, updated
+sites { <site_id>: {t[], v[]} }      every focal site of the variable's group
+```
+
+All of a site's history, oldest first: `t` the times (`YYYY-MM-DD` when every
+time is midnight UTC, as for daily and longer targets, otherwise full ISO
+times) and `v` the observed values (4–5 significant digits). A series longer
+than 4,000 points is thinned evenly, keeping its first and last points. Rows
+with no observation are left out.
 
 ### `models/<model>.json` and `models.json`
 

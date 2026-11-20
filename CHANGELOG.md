@@ -115,6 +115,9 @@ optional and the defaults keep today's behaviour.
     ignored). The pages no longer use Bootstrap, so a challenge page that relied
     on its components needs its own styles (`challenge.css` in the content
     folder, loaded after the template's).
+  - The Targets page draws each variable's observations at the focal sites in
+    the browser, with the same chart as the forecast explorer (from the new
+    `targets/<variable>.json` files), and its map zooms to fit the sites.
   - New optional keys: `dashboard$tagline`, `key_request_url`, `min_forecasts`,
     `skill_baseline`, `publish_results`.
   - The old Performance and Catalog pages are gone (replaced by Leaderboard,
