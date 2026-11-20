@@ -24,7 +24,7 @@ env:
 
 jobs:
   config:
-    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+    uses: rqthomas/challenge-ci/.github/workflows/_config.yaml@v0.1.0-rc.5
 
   drivers:
     needs: config
@@ -39,11 +39,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: eco4cast/challenge-ci/.github/actions/setup-challenge@main
+      - uses: rqthomas/challenge-ci/.github/actions/setup-challenge@v0.1.0-rc.5
 
       - name: Download pseudo and update stage 3
         run: Rscript -e 'challengeci::run_stage()' drivers-stage3 ${{ inputs.rebuild && 'rebuild' || '' }}
 
-      - uses: eco4cast/challenge-ci/.github/actions/healthcheck@main
+      - uses: rqthomas/challenge-ci/.github/actions/healthcheck@v0.1.0-rc.5
         with:
           name: drivers-stage3
