@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   run:
-    uses: eco4cast/challenge-ci/.github/workflows/_drivers_stage3.yaml@main
+    uses: rqthomas/challenge-ci/.github/workflows/_drivers_stage3.yaml@v0.1.0-rc.7
     with:
       dry_run: ${{ inputs.dry_run || false }}
       rebuild: ${{ inputs.rebuild || false }}
