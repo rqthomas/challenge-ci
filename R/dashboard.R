@@ -2,17 +2,17 @@
 # the challenge's own content (render_dashboard()).
 #
 # stage_dashboard_data() runs before `quarto render`: it does every S3 query
-# and writes small local files, so the pages only read local data and plot it.
-# One query per duration partition and dataset; nothing reads the raw
-# forecasts.
+# and writes small public JSON files (the data contract, docs/dashboard-data.md,
+# built by R/dashboard_data.R). The pages read only those files, in the
+# browser, so a private bucket's key never leaves the build.
 #
-#   forecasts.parquet    latest forecast summaries at the plot sites
-#   analysis.parquet     scores of an older forecast, now with observations
-#   leaderboard.parquet  mean CRPS by model, reference date and horizon
-#   stats.json           headline numbers for the home page
-#   model_types.csv      registered models per modelling approach
-#   variables.csv        the challenge's variables, names and descriptions
-#   sites.csv            sites, locations and the groups they belong to
+#   meta.json                  the challenge, variables, sites, datasets, access
+#   models.json                every model, for labels and filters
+#   leaderboard/<variable>.json  skill and CRPS by window, horizon and date
+#   forecasts/<variable>__<site>.json  the latest and a scored forecast, with observations
+#   models/<model_id>.json     a model's registration
+#   results/<model_id>.json    what happened to each file a model submitted
+#   variables.csv, sites.csv   for the pages that render tables in R
 
 #' Dashboard settings
 #'
@@ -25,15 +25,26 @@
 #'   `all` for every variable.
 #' * `content_dir` (`challenge/dashboard`): the challenge's dashboard content
 #'   (see [render_dashboard()]).
-#' * `extra_pages`: the challenge's own pages for the navbar, each with `href`
-#'   (e.g. `learn-more.qmd`) and an optional Bootstrap `icon`.
+#' * `extra_pages`: the challenge's own pages for the navigation, each with
+#'   `href` (e.g. `learn-more.qmd`) and a `title` (default: the file name).
+#' * `title`, `tagline`: the site title (default: the challenge's long name)
+#'   and the sentence under the home page's heading.
+#' * `skill_baseline`: a model id to measure skill against for every variable
+#'   (default: the group's climatology baseline, see [skill_baselines()]).
+#' * `min_forecasts` (5): forecast days a model needs in a leaderboard window
+#'   to be ranked.
+#' * `publish_results` (`true`): publish the outcome of each submitted file on
+#'   the site, which "Check my submissions" reads.
+#' * `key_request_url`: where a participant asks for a read-only key when the
+#'   bucket is private (default: the contact address).
 #'
 #' @inheritParams config_get
 #' @return A list.
 #' @export
 dashboard_settings <- function(cfg) {
   defaults <- list(n_plot_sites = 2, leaderboard_max_horizon = 35, excluded_models = list(),
-                   content_dir = file.path("challenge", "dashboard"), extra_pages = list())
+                   content_dir = file.path("challenge", "dashboard"), extra_pages = list(),
+                   min_forecasts = 5, publish_results = TRUE)
   # Each setting replaces its default whole: modifyList() would merge the
   # unnamed `extra_pages` list into the empty default and lose it.
   settings <- defaults
@@ -73,7 +84,12 @@ plot_sites <- function(cfg) {
                     by = "group", relationship = "many-to-many")
 }
 
-#' Stage the data the dashboard plots
+#' Stage the data the dashboard reads
+#'
+#' Writes the dashboard's data contract (`docs/dashboard-data.md`) to
+#' `out_dir`: JSON files the pages load in the browser, plus two CSV files for
+#' the pages that render tables in R. Every bucket read happens here, with the
+#' challenge's key when the bucket is private.
 #'
 #' @inheritParams config_get
 #' @param out_dir Folder to write to.
@@ -86,44 +102,113 @@ stage_dashboard_data <- function(cfg, out_dir = file.path("dashboard", "data"),
   duckdb_connect(cfg, "main", anonymous = anonymous_reads(cfg))
   conn <- duckdbfs::cached_connection()
   settings <- dashboard_settings(cfg)
-  sites <- plot_sites(cfg)
-  durations <- unique(target_variables(cfg)$duration)
+  variables <- dashboard_variables(cfg)
   project <- paste0("project_id=", cfg$project_id)
 
-  per_duration <- purrr::map(durations, function(duration) {
+  # NULL when nothing has been bundled or scored yet (a new challenge).
+  inputs <- purrr::map(rlang::set_names(unique(variables$duration)), function(duration) {
+    partition <- paste0("duration=", duration)
+    list(
+      summaries = bucket_uri(cfg, "summaries_bucket", "bundled-summaries", project, partition) |>
+        open_dataset_if_any(conn = conn),
+      scores = bucket_uri(cfg, "scores_bucket", "bundled-parquet", project, partition) |>
+        open_dataset_if_any(conn = conn)
+    )
+  })
+  observations <- plot_observations(cfg, plot_sites(cfg), now)
+  registered <- read_registered_models(cfg)
+  stats <- dashboard_stats(cfg, conn, now)
+  write_dashboard_data(cfg, out_dir, now, inputs, observations, registered, stats, variables, conn)
+  if (isTRUE(settings$publish_results)) {
+    remote_connect(cfg, "main", anonymous = anonymous_reads(cfg))
+    stage_results(cfg, out_dir)
+  }
+  readr::write_csv(variables, file.path(out_dir, "variables.csv"))
+  readr::write_csv(dashboard_sites(cfg), file.path(out_dir, "sites.csv"))
+  log_step("Dashboard: data written to {.path {out_dir}}")
+  invisible(out_dir)
+}
+
+# The challenge's variables with their catalog names and a dashboard `id`.
+dashboard_variables <- function(cfg, metadata = read_variable_metadata(cfg)) {
+  variables <- catalog_variables(cfg, metadata)
+  variables$id <- dashboard_variable_id(variables$variable, variables$duration)
+  variables
+}
+
+# Writes the data contract from what was read: `inputs` has, per duration, the
+# `summaries` and `scores` as lazy tables (or NULL); `observations` are the
+# targets at the plot sites; `registered` the models from
+# read_registered_models(); `stats` the headline numbers. No bucket is read
+# here, so tests can run it on local files.
+write_dashboard_data <- function(cfg, out_dir, now, inputs, observations, registered, stats,
+                                 variables = dashboard_variables(cfg),
+                                 conn = duckdbfs::cached_connection()) {
+  settings <- dashboard_settings(cfg)
+  sites <- plot_sites(cfg)
+  baselines <- skill_baselines(cfg)
+
+  scored_models <- character()
+  models_by_variable <- list()
+  active_models <- character()
+  for (duration in unique(variables$duration)) {
     log_step("Dashboard: {duration}")
     lookback <- dashboard_lookback_days(duration)
-    partition <- paste0("duration=", duration)
-    # NULL when nothing has been bundled or scored yet (a new challenge).
-    summaries <- bucket_uri(cfg, "summaries_bucket", "bundled-summaries", project, partition) |>
-      open_dataset_if_any(conn = conn)
-    scores <- bucket_uri(cfg, "scores_bucket", "bundled-parquet", project, partition) |>
-      open_dataset_if_any(conn = conn)
+    windows <- dashboard_windows(duration)
+    vars <- variables[variables$duration == duration, ]
+    summaries <- inputs[[duration]]$summaries
+    scores <- inputs[[duration]]$scores
     duration_sites <- dplyr::filter(sites, .data$duration == !!duration)
-    list(
-      forecasts = if (is.null(summaries)) empty_dashboard_table("forecasts") else
-        latest_forecasts(summaries, duration_sites, now),
-      analysis = if (is.null(scores)) empty_dashboard_table("analysis") else
-        scored_forecasts(scores, duration_sites, now, lookback),
-      leaderboard = if (is.null(scores)) empty_dashboard_table("leaderboard") else
-        leaderboard_scores(scores, now, lookback, settings$leaderboard_max_horizon)
-    ) |>
-      purrr::map(\(rows) dplyr::mutate(rows, duration = duration))
-  })
-  for (part in c("forecasts", "analysis", "leaderboard")) {
-    rows <- purrr::list_rbind(purrr::map(per_duration, part))
-    arrow::write_parquet(rows, file.path(out_dir, paste0(part, ".parquet")))
-    log_step("Dashboard: {nrow(rows)} rows in {part}.parquet")
+    latest <- if (is.null(summaries)) empty_dashboard_table("forecasts") else
+      latest_forecasts(summaries, duration_sites, now)
+    scored <- if (is.null(scores)) empty_dashboard_table("analysis") else
+      scored_forecasts(scores, duration_sites, now, lookback)
+    cells <- NULL
+    if (!is.null(scores)) {
+      rows <- leaderboard_rows(scores, dplyr::filter(baselines, .data$duration == !!duration),
+                               now, windows, settings$leaderboard_max_horizon, conn)
+      cells <- leaderboard_cells(rows, now, windows)
+    }
+
+    for (i in seq_len(nrow(vars))) {
+      v <- vars[i, ]
+      excluded <- unique(unlist(settings$excluded_models[c("all", v$variable)]))
+      base <- baselines$baseline_model[baselines$variable == v$variable &
+                                         baselines$duration == v$duration]
+      board <- if (is.null(cells)) {
+        list(schema = dashboard_data_schema, variable = v$id, windows = jarr(windows),
+             updated = format_utc(now), models = structure(list(), names = character()))
+      } else {
+        leaderboard_json(v, cells, windows, base, now, excluded)
+      }
+      write_dashboard_json(board, file.path(out_dir, "leaderboard", paste0(v$id, ".json")))
+      for (m in names(board$models)) {
+        models_by_variable[[m]] <- c(models_by_variable[[m]], v$id)
+      }
+      scored_models <- union(scored_models, names(board$models))
+      mine <- sites$variable == v$variable & sites$duration == v$duration
+      for (site in unique(sites$site_id[mine])) {
+        forecasts <- forecast_json(v, site, latest, scored, observations, now)
+        file <- paste0(v$id, "__", dashboard_slug(site), ".json")
+        write_dashboard_json(forecasts, file.path(out_dir, "forecasts", file))
+      }
+    }
+    if (!is.null(cells)) {
+      in_window <- cells$window$window == windows[2]
+      active_models <- union(active_models, unique(cells$window$model_id[in_window]))
+    }
   }
 
-  jsonlite::write_json(dashboard_stats(cfg, conn, now), file.path(out_dir, "stats.json"),
-                       auto_unbox = TRUE, pretty = TRUE)
-  read_registered_models(cfg) |>
-    dplyr::mutate(model_type = model_type_label(.data$model_type)) |>
-    dplyr::count(.data$model_type, name = "n_models") |>
-    readr::write_csv(file.path(out_dir, "model_types.csv"))
-  readr::write_csv(catalog_variables(cfg), file.path(out_dir, "variables.csv"))
-  readr::write_csv(dashboard_sites(cfg), file.path(out_dir, "sites.csv"))
+  for (m in union(registered$model_id, scored_models)) {
+    write_dashboard_json(model_json(m, registered, models_by_variable[[m]]),
+                         file.path(out_dir, "models", paste0(dashboard_slug(m), ".json")))
+  }
+  write_dashboard_json(models_index_json(registered, scored_models, models_by_variable),
+                       file.path(out_dir, "models.json"))
+  stats$n_active_models <- length(active_models)
+  publish <- isTRUE(settings$publish_results)
+  meta <- dashboard_meta(cfg, variables, baselines, stats, now, publish)
+  write_dashboard_json(meta, file.path(out_dir, "meta.json"))
   invisible(out_dir)
 }
 
@@ -139,10 +224,7 @@ empty_dashboard_table <- function(part) {
                               `quantile02.5` = numeric(), `quantile97.5` = numeric())
   switch(part,
     forecasts = summaries,
-    analysis = dplyr::mutate(summaries, observation = numeric()),
-    leaderboard = tibble::tibble(variable = character(), model_id = character(),
-                                 reference_datetime = time, horizon = numeric(),
-                                 crps = numeric(), n = numeric())
+    analysis = dplyr::mutate(summaries, observation = numeric())
   )
 }
 
@@ -182,22 +264,6 @@ scored_forecasts <- function(scores, sites, now, lookback) {
     dplyr::select(dplyr::all_of(c(summary_columns, "observation"))) |>
     dplyr::collect() |>
     dplyr::semi_join(sites, by = c("variable", "site_id"))
-}
-
-# Mean CRPS over all sites, by model, reference date and horizon (days), for
-# forecasts made in the last `lookback` days. `n` lets the pages average these
-# means again without bias.
-leaderboard_scores <- function(scores, now, lookback, max_horizon) {
-  since <- now - lubridate::days(lookback)
-  scores |>
-    dplyr::filter(.data$reference_datetime >= !!since, !is.na(.data$crps)) |>
-    dplyr::mutate(horizon = date_diff("day", as.POSIXct(reference_datetime),
-                                      as.POSIXct(datetime))) |>
-    dplyr::filter(.data$horizon > 0, .data$horizon <= !!max_horizon) |>
-    dplyr::summarise(crps = mean(.data$crps, na.rm = TRUE), n = dplyr::n(),
-                     .by = c("variable", "model_id", "reference_datetime", "horizon")) |>
-    dplyr::collect() |>
-    dplyr::mutate(horizon = as.numeric(.data$horizon), n = as.numeric(.data$n))
 }
 
 # Headline numbers: forecasts and models submitted, and the targets' span.
@@ -284,10 +350,14 @@ stac_browser_url <- function(cfg, path = "catalog.json") {
 #' @inheritParams config_get
 #' @param out_dir Folder the rendered site is copied to.
 #' @param content_dir The challenge's dashboard content.
+#' @param data_dir A folder already staged by [stage_dashboard_data()]. When
+#'   given, nothing is read from the buckets and the site is built from it:
+#'   for previewing a design, or rebuilding a site from yesterday's data.
 #' @return `out_dir`, invisibly.
 #' @export
 render_dashboard <- function(cfg, out_dir = file.path("dashboard", "docs"),
-                             content_dir = dashboard_settings(cfg)$content_dir) {
+                             content_dir = dashboard_settings(cfg)$content_dir,
+                             data_dir = NULL) {
   quarto <- Sys.which("quarto")
   if (!nzchar(quarto)) cli::cli_abort("Quarto is not installed (no {.code quarto} on the PATH).")
   template <- system.file("dashboard", package = "challengeci", mustWork = TRUE)
@@ -301,9 +371,14 @@ render_dashboard <- function(cfg, out_dir = file.path("dashboard", "docs"),
   } else {
     cli::cli_warn("No dashboard content in {.path {content_dir}}; using the template's defaults.")
   }
-  stage_dashboard_data(cfg, out_dir = file.path(build, "data"))
-  write_quarto_metadata(cfg, file.path(build, "_challenge.yml"),
-                        banner = file.exists(file.path(build, "img", "banner.jpg")))
+  if (is.null(data_dir)) {
+    stage_dashboard_data(cfg, out_dir = file.path(build, "data"))
+  } else {
+    dir.create(file.path(build, "data"))
+    copy_dir(data_dir, file.path(build, "data"))
+  }
+  write_quarto_metadata(cfg, file.path(build, "_challenge.yml"))
+  write_dashboard_shell(cfg, build, banner = file.exists(file.path(build, "img", "banner.jpg")))
 
   env <- c(CHALLENGE_CONFIG = config_file(cfg))
   # The pages run in another R process, whose default dry-run folder differs.
@@ -350,29 +425,98 @@ package_source_dir <- function() {
   NULL
 }
 
-# The pages every dashboard has, in navbar order.
+# The pages every dashboard has, in navigation order. The Quarto pages behind
+# them are in inst/dashboard/.
 dashboard_pages <- list(
-  list(href = "targets.qmd", icon = "bullseye"),
-  list(href = "instructions.qmd", icon = "info-square"),
-  list(href = "performance.qmd", icon = "droplet"),
-  list(href = "catalog.qmd", icon = "book")
+  list(href = "index.html", title = "Overview"),
+  list(href = "targets.html", title = "Targets"),
+  list(href = "leaderboard.html", title = "Leaderboard"),
+  list(href = "forecasts.html", title = "Forecasts"),
+  list(href = "data.html", title = "Data"),
+  list(href = "participate.html", title = "Participate")
 )
 
+# The title in a .qmd file's front matter, or NULL.
+page_title <- function(path) {
+  if (!file.exists(path)) return(NULL)
+  lines <- utils::head(readLines(path, warn = FALSE), 30)
+  title <- sub("^title:\\s*[\"']?(.*?)[\"']?\\s*$", "\\1", grep("^title:", lines, value = TRUE)[1])
+  if (is.na(title) || !nzchar(title)) NULL else title
+}
+
+# The navigation: the standard pages, then the challenge's own
+# (`dashboard$extra_pages`, whose `href` may name the .qmd source). A page's
+# title is the configured one, else the `title:` of its .qmd in `dir` (the
+# build folder), else its file name.
+dashboard_nav <- function(cfg, dir = NULL) {
+  extra <- purrr::map(dashboard_settings(cfg)$extra_pages, function(p) {
+    href <- sub("\\.qmd$", ".html", p$href)
+    named <- tools::toTitleCase(gsub("[-_]", " ", sub("\\.html$", "", basename(href))))
+    from_file <- if (!is.null(dir)) page_title(file.path(dir, sub("\\.html$", ".qmd", href)))
+    list(href = href, title = p$title %||% from_file %||% named)
+  })
+  c(dashboard_pages, extra)
+}
+
+html_escape <- function(x) {
+  x <- gsub("&", "&amp;", x, fixed = TRUE)
+  x <- gsub("<", "&lt;", x, fixed = TRUE)
+  x <- gsub(">", "&gt;", x, fixed = TRUE)
+  gsub("\"", "&quot;", x, fixed = TRUE)
+}
+
+# An HTML template of the dashboard (inst/dashboard/_*.template).
+read_template <- function(name) {
+  path <- system.file("dashboard", name, package = "challengeci", mustWork = TRUE)
+  paste(readLines(path, warn = FALSE), collapse = "\n")
+}
+
+# Fills `{{name}}` slots in an HTML template.
+fill_template <- function(template, ...) {
+  values <- list(...)
+  for (name in names(values)) {
+    template <- gsub(paste0("{{", name, "}}"), values[[name]], template, fixed = TRUE)
+  }
+  template
+}
+
+# The header and footer every page includes (_header.html, _footer.html in the
+# build folder). The navigation marks the current page in the browser
+# (js/shell.js). A challenge banner image becomes a strip under the header.
+write_dashboard_shell <- function(cfg, dir, banner = FALSE) {
+  settings <- dashboard_settings(cfg)
+  nav <- purrr::map_chr(dashboard_nav(cfg, dir), function(p) {
+    sprintf('<a href="%s">%s</a>', html_escape(p$href), html_escape(p$title))
+  })
+  strip <- paste0('<div class="hub-banner" role="img" aria-label="" ',
+                  'style="height:140px;background:url(img/banner.jpg) center/cover"></div>\n')
+  title <- html_escape(settings$title %||% cfg$challenge_long_name %||% cfg$project_id)
+  header <- fill_template(read_template("_header.template"), title = title,
+                          nav = paste(nav, collapse = "\n"), banner = if (banner) strip else "")
+  repo <- config_get(cfg, "github_repo", default = NULL)
+  contact <- if (is.null(settings$contact_email)) "" else
+    paste0(" &middot; Contact: ", html_escape(settings$contact_email))
+  source <- if (is.null(repo)) "" else
+    paste0('<a href="https://github.com/', html_escape(repo), '">Source on GitHub</a> &middot; ')
+  footer <- fill_template(read_template("_footer.template"), contact = contact, source = source)
+  writeLines(header, file.path(dir, "_header.html"), useBytes = TRUE)
+  writeLines(footer, file.path(dir, "_footer.html"), useBytes = TRUE)
+  invisible(dir)
+}
+
 # Site-wide Quarto settings that come from the config. _quarto.yml lists this
-# file under metadata-files, so Quarto merges it into the project settings.
-write_quarto_metadata <- function(cfg, path, banner = FALSE) {
+# file under metadata-files, so Quarto merges it into the project settings. A
+# challenge's own styles (challenge.css next to the file) load after ours.
+write_quarto_metadata <- function(cfg, path) {
   repo <- paste0("https://github.com/", config_get(cfg, "github_repo"))
   settings <- dashboard_settings(cfg)
-  extra <- purrr::map(settings$extra_pages, function(p) {
-    purrr::compact(list(href = p$href, icon = p$icon))
-  })
   meta <- list(website = list(
     title = settings$title %||% cfg$challenge_long_name,
     `site-url` = cfg$challenge_url,
-    `repo-url` = repo,
-    navbar = list(left = c(dashboard_pages, extra)),
-    `page-footer` = list(left = "CC-BY", right = list(list(icon = "github", href = repo)))
+    `repo-url` = repo
   ))
-  if (banner) meta$format <- list(html = list(`title-block-banner` = "img/banner.jpg"))
+  own <- file.exists(file.path(dirname(path), "challenge.css"))
+  css <- c("styles.css", if (own) "challenge.css")
+  meta$format <- list(html = list(css = css))
   yaml::write_yaml(meta, path)
 }

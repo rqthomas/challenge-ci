@@ -1,0 +1,12 @@
+<header class="hub-header"><div class="hub-header-inner">
+<a class="hub-brand" href="index.html">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9c3-3 6 3 9 0s6 3 9 0M3 15c3-3 6 3 9 0s6 3 9 0"/></svg>
+<span>{{title}}</span></a>
+<nav class="hub-nav" aria-label="Main">
+{{nav}}
+</nav>
+<div class="hub-header-actions">
+<button class="hub-theme" id="hub-theme" type="button" aria-label="Switch theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></button>
+<a class="btn btn-primary" href="participate.html">Submit a forecast</a>
+</div></div></header>
+{{banner}}<main class="hub-main" id="main">

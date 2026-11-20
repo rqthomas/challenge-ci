@@ -10,7 +10,7 @@ DESCRIPTION, NAMESPACE   the challengeci package (NAMESPACE is generated, do not
 R/                       package functions, documented with roxygen comments
 man/                     help pages (generated, do not edit)
 tests/testthat/          unit tests; fixtures/ holds example configs
-inst/dashboard/          the dashboard template (Quarto pages, helpers, default text)
+inst/dashboard/          the dashboard template (Quarto pages, JavaScript modules, styles, default text)
 inst/workflows/          trigger workflows that challenge repos copy
 inst/extdata/            data shipped with the package (catalog column descriptions)
 .github/workflows/_*.yaml   reusable workflows, one per stage
@@ -59,15 +59,47 @@ never committed.
 
 ## The dashboard template
 
+The dashboard has three layers, so each can change on its own:
+
+1. **Staging (R).** `stage_dashboard_data()` reads the buckets (with the key
+   when `public_read: false`) and writes small public JSON files to `data/`:
+   the data contract, described in [dashboard-data.md](dashboard-data.md) and
+   built by `R/dashboard_data.R`. Nothing else touches a bucket.
+2. **Pages (Quarto + JavaScript).** `inst/dashboard/` is a Quarto site with no
+   framework: `styles.css` (colour and font tokens at the top), `js/` (plain
+   ES modules, no build step: `data.js` loads the files, `chart.js` draws SVG,
+   `pages/*.js` one per page) and a stub `.qmd` per page that loads its module.
+   `targets.qmd` and `instructions.qmd` still build their tables in R.
+3. **Content (the challenge's).** Pages pull challenge-specific sections from
+   `_content/` with `{{< include _content/<file>.qmd >}}`; the template's
+   `_content/` files are generic defaults that a challenge replaces by shipping
+   a file of the same name. A `challenge.css` in the content folder is loaded
+   after `styles.css`, so a challenge restyles the site by overriding its
+   tokens.
+
 `render_dashboard()` copies `inst/dashboard/` to a temporary folder, lays the
 challenge's content folder (`dashboard$content_dir`, default
-`challenge/dashboard`) over it, stages the data and renders with Quarto. Pages
-pull challenge-specific sections from `_content/` with
-`{{< include _content/<file>.qmd >}}`; the template's `_content/` files are
-generic defaults that a challenge replaces by shipping a file of the same name.
-Pages load `R/setup.R`, which provides `cfg`, `settings`, `links` and
-`data_file()`. Keep the editor in source mode (`editor: source`): the visual
-editor rewrites inline R inside link URLs and breaks the links.
+`challenge/dashboard`) over it, stages the data, writes the header and footer,
+and renders with Quarto. R pages load `R/setup.R`, which provides `cfg`,
+`settings`, `links` and `data_file()`. Keep the editor in source mode (`editor:
+source`): the visual editor rewrites inline R inside link URLs and breaks the
+links.
+
+Rules for the browser code: text from the data files only ever becomes text
+(`dom.js` builds elements; there is no `innerHTML`, and a test fails if one
+appears), and the pages only read `data/`. Both are checked by
+`tests/testthat/test-dashboard.R`.
+
+**Previewing a design without buckets:** stage once (or build a folder with
+`write_dashboard_data()` from synthetic scores, as `tests/testthat/test-dashboard_data.R`
+does), then
+
+```r
+render_dashboard(cfg, "site", data_dir = "path/to/staged/data")
+```
+
+and serve `site/` with any static server (`python3 -m http.server`). The pages
+fetch their data, so they do not work from a `file://` address.
 
 ## The edit, document, test loop
 

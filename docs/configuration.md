@@ -201,18 +201,26 @@ These settings drive the dashboard (`?render_dashboard`). All are optional.
 | Key | Description |
 |---|---|
 | `dashboard$title` | Site title. Defaults to `challenge_long_name`. |
-| `dashboard$contact_email` | Contact address shown on the home and instructions pages. |
-| `dashboard$registration_form_url` | Model registration form linked from the instructions. |
-| `dashboard$example_submission_repo` | | A GitHub repository (`owner/name`) with a working example submission. The instructions link to it when the challenge reads GitHub repositories. |
+| `dashboard$tagline` | The sentence under the home page's heading. A generic one is used if unset. |
+| `dashboard$contact_email` | Contact address shown on the home and participation pages. |
+| `dashboard$registration_form_url` | Model registration form linked from the instructions, when the challenge does not read GitHub repositories. |
+| `dashboard$example_submission_repo` | A GitHub repository (`owner/name`) with a working example submission. The participation page shows how to start from it when the challenge reads GitHub repositories. |
+| `dashboard$key_request_url` | Where a participant asks for a read-only key when `public_read` is `false`: an issue form, a web form or a `mailto:` link. Defaults to a mail to `contact_email`. |
 | `dashboard$n_plot_sites` | Sites per target group in forecast plots, taken from the group's `focal_sites`. Default 2. |
 | `dashboard$leaderboard_max_horizon` | Longest horizon, in days, in the leaderboards. Default 35. |
-| `dashboard$excluded_models` | Model ids left out of the plots, keyed by variable, or `all` for every variable. |
-| `dashboard$content_dir` | The challenge's dashboard content: text partials, target group descriptions, banner and extra pages. Default `challenge/dashboard`. |
-| `dashboard$extra_pages` | The challenge's own pages for the navbar, after the standard ones: a list of `{href: page.qmd, icon: <Bootstrap icon>}`. |
+| `dashboard$min_forecasts` | Forecast days a model needs in a leaderboard window to be ranked. Default 5. |
+| `dashboard$skill_baseline` | A model id to measure skill against for every variable. Default: the group's `climatology` baseline (`weekly_climatology` for weekly variables); a variable with no such baseline is ranked by CRPS. |
+| `dashboard$excluded_models` | Model ids left out of the leaderboards and plots, keyed by variable, or `all` for every variable. |
+| `dashboard$publish_results` | `true` (default): publish the outcome of each submitted file (file name, status, reason) on the site, which "Check my submissions" reads. `false` hides it. |
+| `dashboard$content_dir` | The challenge's dashboard content: text partials, target group descriptions, banner, `challenge.css` and extra pages. Default `challenge/dashboard`. |
+| `dashboard$extra_pages` | The challenge's own pages for the navigation, after the standard ones: a list of `{href: page.qmd, title: "Title"}` (the title defaults to the file name). |
 
-The site title, URL (`challenge_url`, which also sets the sitemap), repository
-link (`github_repo`), navbar and banner reach Quarto through `_challenge.yml`,
-which `render_dashboard()` writes into the build.
+The site title, URL (`challenge_url`, which also sets the sitemap) and
+repository link (`github_repo`) reach Quarto through `_challenge.yml`, and the
+navigation and footer through `_header.html` and `_footer.html`, which
+`render_dashboard()` writes into the build. The pages read the data described
+in [dashboard-data.md](dashboard-data.md); a private bucket's key is used only
+while that data is staged.
 
 ## Catalog (`catalog_config`)
 

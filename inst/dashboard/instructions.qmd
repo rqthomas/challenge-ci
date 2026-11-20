@@ -195,11 +195,11 @@ cat(paste0("-   `", baselines$model_id, "`: ", method_text[baselines$method],
            " (", baselines$groups, ")"), sep = "\n")
 ```
 
-Our [forecast performance](performance.qmd#sec-performance) page includes evaluations of all submitted models.
+Our [leaderboard](leaderboard.qmd) and [forecast explorer](forecasts.qmd) page includes evaluations of all submitted models.
 
 ### Catalog
 
-Our [forecast catalog](catalog.qmd#sec-spatiotemporal-asset-catalog) page provides information and code for accessing the forecasts and scores.
+Our [data](data.qmd) page provides information and code for accessing the forecasts and scores.
 
 ## Questions?
 

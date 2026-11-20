@@ -11,7 +11,7 @@ points to before large changes.
 | Path | What | Doc |
 |---|---|---|
 | `R/` | the `challengeci` package: all shared logic; `run_stage()` is the entry point | `docs/developing.md` |
-| `inst/dashboard/` | the dashboard template; challenges add their text | `docs/developing.md` |
+| `inst/dashboard/` | the dashboard template (pages, JS modules, styles); challenges add their text | `docs/dashboard-data.md`, `docs/developing.md` |
 | `inst/workflows/` | trigger workflows challenge repos copy | `docs/operations.md` |
 | `.github/` | reusable workflows (`_*.yaml`), actions, image and release workflows | `docs/operations.md` |
 | `tests/testthat/fixtures/` | example configs: a minimal one, and `tests/testthat/fixtures/full_config.yaml` (a complete real challenge) | `docs/configuration.md` |

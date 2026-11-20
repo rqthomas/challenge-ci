@@ -5,26 +5,30 @@ project:
   # pulled into pages, never rendered on their own.
   render:
     - "*.qmd"
+  # The browser modules and the staged data are copied as they are.
+  resources:
+    - js/**
+    - data/**
 
-# The site title, URL, repository, navbar, banner and footer come from the
-# challenge: render_dashboard() writes them to _challenge.yml.
+# The site title, URL and repository come from the challenge: render_dashboard()
+# writes them to _challenge.yml, together with the header and footer.
 metadata-files:
   - _challenge.yml
 
-website:
-  page-navigation: true
-  repo-actions: [source, issue]
-  navbar:
-    background: primary
-    search: true
-
 format:
   html:
-    theme: sandstone
+    # No Bootstrap: the pages are styled by styles.css (see its tokens).
+    theme: none
     css: styles.css
-    title-block-style: default
-    title-block-banner-color: white
-    page-layout: full
-    toc: true
+    page-layout: custom
+    toc: false
+    # Quarto's page extras (hover cards, anchors, copy buttons) are not used.
+    anchor-sections: false
+    code-copy: false
+    citations-hover: false
+    footnotes-hover: false
+    include-in-header: _head.html
+    include-before-body: _header.html
+    include-after-body: _footer.html
 
 editor: source

@@ -2,7 +2,7 @@
 % Please edit documentation in R/dashboard.R
 \name{stage_dashboard_data}
 \alias{stage_dashboard_data}
-\title{Stage the data the dashboard plots}
+\title{Stage the data the dashboard reads}
 \usage{
 stage_dashboard_data(
   cfg,
@@ -21,5 +21,8 @@ stage_dashboard_data(
 \code{out_dir}, invisibly.
 }
 \description{
-Stage the data the dashboard plots
+Writes the dashboard's data contract (\code{docs/dashboard-data.md}) to
+\code{out_dir}: JSON files the pages load in the browser, plus two CSV files for
+the pages that render tables in R. Every bucket read happens here, with the
+challenge's key when the bucket is private.
 }

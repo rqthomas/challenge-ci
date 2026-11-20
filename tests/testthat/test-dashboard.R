@@ -1,22 +1,3 @@
-dashboard_test_config <- function() {
-  cfg <- test_config()
-  cfg$target_groups$Lakes$focal_sites <- c("BBBB", "AAAA", "CCCC")
-  cfg$github_repo <- "org/challenge"
-  cfg$challenge_url <- "https://example.org/challenge"
-  cfg$dashboard <- list(title = "Test Challenge", n_plot_sites = 2,
-                        excluded_models = list(all = "bad"))
-  cfg
-}
-
-# Writes `df` as parquet and opens it with duckdb, as the staging code does.
-lazy_table <- function(df) {
-  path <- withr::local_tempfile(fileext = ".parquet", .local_envir = parent.frame())
-  arrow::write_parquet(df, path)
-  duckdbfs::open_dataset(path, recursive = FALSE)
-}
-
-utc <- function(x) as.POSIXct(x, tz = "UTC")
-
 test_that("dashboard settings have defaults the config can override", {
   s <- dashboard_settings(dashboard_test_config())
   expect_equal(s$n_plot_sites, 2)
@@ -24,14 +5,25 @@ test_that("dashboard settings have defaults the config can override", {
   expect_equal(s$excluded_models$all, "bad")
 })
 
-test_that("extra pages from the config reach the navbar", {
+test_that("extra pages from the config reach the navigation", {
   cfg <- dashboard_test_config()
-  cfg$dashboard$extra_pages <- list(list(href = "about.qmd", icon = "info"))
-  path <- withr::local_tempfile(fileext = ".yml")
-  write_quarto_metadata(cfg, path)
-  hrefs <- vapply(yaml::read_yaml(path)$website$navbar$left, `[[`, "", "href")
-  expect_equal(hrefs, c("targets.qmd", "instructions.qmd", "performance.qmd", "catalog.qmd",
-                        "about.qmd"))
+  cfg$dashboard$extra_pages <- list(list(href = "learn-more.qmd"),
+                                    list(href = "about.qmd", title = "About us"))
+  nav <- dashboard_nav(cfg)
+  expect_equal(vapply(nav, `[[`, "", "href")[7:8], c("learn-more.html", "about.html"))
+  expect_equal(vapply(nav, `[[`, "", "title")[7:8], c("Learn more", "About us"))
+  dir <- withr::local_tempdir()
+  # The page's own title is used when the config gives none.
+  writeLines(c("---", "title: \"Learn more about us\"", "---", "Text"), file.path(dir, "learn-more.qmd"))
+  expect_equal(dashboard_nav(cfg, dir)[[7]]$title, "Learn more about us")
+  write_dashboard_shell(cfg, dir, banner = TRUE)
+  header <- paste(readLines(file.path(dir, "_header.html")), collapse = "\n")
+  expect_match(header, "learn-more.html", fixed = TRUE)
+  expect_match(header, "Learn more about us", fixed = TRUE)
+  expect_match(header, "Test Challenge", fixed = TRUE)
+  expect_match(header, "hub-banner", fixed = TRUE)
+  expect_match(paste(readLines(file.path(dir, "_footer.html")), collapse = "\n"),
+               "https://github.com/org/challenge", fixed = TRUE)
 })
 
 test_that("weekly variables look back a year, others 30 days", {
@@ -77,24 +69,6 @@ test_that("scored_forecasts() picks the latest forecast old enough to have obser
   expect_equal(as.Date(out$reference_datetime), as.Date("2024-05-25"))
 })
 
-test_that("leaderboard_scores() averages recent scores within the horizon", {
-  skip_if_not_installed("arrow")
-  now <- utc("2024-06-30")
-  scores <- tibble::tibble(
-    model_id = "m", site_id = c("A", "B", "A", "A", "A"), variable = "temperature",
-    reference_datetime = utc(c("2024-06-10", "2024-06-10", "2024-06-10", "2024-06-10",
-                               "2024-01-01")),
-    datetime = utc(c("2024-06-11", "2024-06-11", "2024-06-10", "2024-08-30", "2024-01-02")),
-    crps = c(1, 3, 100, 100, 100)
-  )
-  out <- leaderboard_scores(lazy_table(scores), now, lookback = 30, max_horizon = 35)
-  # Horizon 0, horizon 81 and the old reference date are left out.
-  expect_equal(nrow(out), 1)
-  expect_equal(out$crps, 2)
-  expect_equal(out$n, 2)
-  expect_equal(out$horizon, 1)
-})
-
 test_that("model types group differently written answers", {
   expect_equal(model_type_label(c("empirical (a statistical model)",
                                   "Empirical (a statistical model)", NA, "Process based")),
@@ -110,6 +84,7 @@ test_that("dashboard_sites() marks which groups each site belongs to", {
 test_that("the Quarto site settings come from the config", {
   path <- withr::local_tempfile(fileext = ".yml")
   write_quarto_metadata(dashboard_test_config(), path)
+  expect_equal(yaml::read_yaml(path)$format$html$css, "styles.css")
   site <- yaml::read_yaml(path)$website
   expect_equal(site$title, "Test Challenge")
   expect_equal(site$`repo-url`, "https://github.com/org/challenge")
@@ -138,9 +113,40 @@ test_that("dashboard pages call only exported functions", {
 })
 
 test_that("empty dashboard tables bind with real ones", {
-  for (part in c("forecasts", "analysis", "leaderboard")) {
+  for (part in c("forecasts", "analysis")) {
     expect_equal(nrow(empty_dashboard_table(part)), 0)
   }
   expect_true("observation" %in% names(empty_dashboard_table("analysis")))
   expect_s3_class(empty_dashboard_table("forecasts")$reference_datetime, "POSIXct")
+})
+
+test_that("the browser modules never write HTML and every import resolves", {
+  dir <- system.file("dashboard", "js", package = "challengeci")
+  files <- list.files(dir, "[.]js$", recursive = TRUE, full.names = TRUE)
+  expect_gt(length(files), 5)
+  for (f in files) {
+    code <- paste(readLines(f), collapse = "\n")
+    # Data from the files (model names, reasons) must only ever become text.
+    expect_false(grepl("innerHTML|outerHTML|insertAdjacentHTML|document\\.write|eval\\(|new Function",
+                       code), info = f)
+    imports <- regmatches(code, gregexpr("from '(\\.[^']+)'", code))[[1]]
+    for (i in sub("from '(.*)'", "\\1", imports)) {
+      expect_true(file.exists(normalizePath(file.path(dirname(f), i), mustWork = FALSE)),
+                  info = paste(basename(f), "imports", i))
+    }
+  }
+})
+
+test_that("every page module has a Quarto page, and no page is left without one", {
+  dir <- system.file("dashboard", package = "challengeci")
+  modules <- sub("[.]js$", "", list.files(file.path(dir, "js", "pages"), "[.]js$"))
+  pages <- list.files(dir, "[.]qmd$")
+  used <- unlist(lapply(file.path(dir, pages), function(f) {
+    text <- paste(readLines(f), collapse = "\n")
+    sub(".*js/pages/([a-z]+)[.]js.*", "\\1", regmatches(text, regexpr("js/pages/[a-z]+[.]js", text)))
+  }))
+  expect_setequal(used, modules)
+  # Every page the navigation links to is rendered from a .qmd.
+  hrefs <- sub("[.]html$", ".qmd", vapply(dashboard_pages, `[[`, "", "href"))
+  expect_true(all(hrefs %in% pages))
 })

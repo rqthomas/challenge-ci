@@ -1,0 +1,11 @@
+---
+pagetitle: "Participate"
+title-block-style: none
+---
+
+<div id="app"><noscript>This page needs JavaScript to draw its charts and tables.</noscript></div>
+
+<script type="module">
+import { init } from "./js/pages/participate.js";
+init();
+</script>

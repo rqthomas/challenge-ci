@@ -7,7 +7,8 @@
 render_dashboard(
   cfg,
   out_dir = file.path("dashboard", "docs"),
-  content_dir = dashboard_settings(cfg)$content_dir
+  content_dir = dashboard_settings(cfg)$content_dir,
+  data_dir = NULL
 )
 }
 \arguments{
@@ -16,6 +17,10 @@ render_dashboard(
 \item{out_dir}{Folder the rendered site is copied to.}
 
 \item{content_dir}{The challenge's dashboard content.}
+
+\item{data_dir}{A folder already staged by \code{\link[=stage_dashboard_data]{stage_dashboard_data()}}. When
+given, nothing is read from the buckets and the site is built from it:
+for previewing a design, or rebuilding a site from yesterday's data.}
 }
 \value{
 \code{out_dir}, invisibly.

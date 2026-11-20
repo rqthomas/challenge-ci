@@ -98,6 +98,30 @@ optional and the defaults keep today's behaviour.
 - A file that fails to be recorded no longer counts as recorded for the rest of
   the run.
 - New package dependency: httr2, now installed explicitly in the base image.
+- **New dashboard.** The site is rebuilt as a participant-first dashboard:
+  Overview, Targets, Leaderboard, Forecasts (an explorer), Data, Participate and
+  a page per model. It works for private buckets: R reads the buckets with the
+  key and writes small public JSON files (the contract in
+  `docs/dashboard-data.md`); the pages, plain JavaScript modules with no build
+  step, read only those. Leaderboards now show skill against the climatology
+  baseline (summed CRPS on the forecasts both made) as well as CRPS, over 7, 30
+  and 90 days (90, 180 and 365 for weekly variables). Participants can read how
+  to access each dataset (with a key when the bucket is private) and check what
+  happened to each file they submitted ("Check my submissions", from the
+  published submission results).
+  - What a challenge has to change: nothing is required. Content partials
+    (`_content/*.qmd`, `targets/<group>.md`, `img/banner.jpg`) still work.
+    `dashboard$extra_pages` now takes `{href, title}` (the Bootstrap `icon` is
+    ignored). The pages no longer use Bootstrap, so a challenge page that relied
+    on its components needs its own styles (`challenge.css` in the content
+    folder, loaded after the template's).
+  - New optional keys: `dashboard$tagline`, `key_request_url`, `min_forecasts`,
+    `skill_baseline`, `publish_results`.
+  - The old Performance and Catalog pages are gone (replaced by Leaderboard,
+    Forecasts and Data); the staged `forecasts.parquet`, `analysis.parquet`,
+    `leaderboard.parquet`, `stats.json` and `model_types.csv` are no longer
+    written. `render_dashboard()` takes `data_dir` to build from an
+    already-staged folder.
 
 ## v0.1.0
 

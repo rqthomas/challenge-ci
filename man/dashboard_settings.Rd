@@ -23,7 +23,17 @@ leaderboards.
 \code{all} for every variable.
 \item \code{content_dir} (\code{challenge/dashboard}): the challenge's dashboard content
 (see \code{\link[=render_dashboard]{render_dashboard()}}).
-\item \code{extra_pages}: the challenge's own pages for the navbar, each with \code{href}
-(e.g. \code{learn-more.qmd}) and an optional Bootstrap \code{icon}.
+\item \code{extra_pages}: the challenge's own pages for the navigation, each with
+\code{href} (e.g. \code{learn-more.qmd}) and a \code{title} (default: the file name).
+\item \code{title}, \code{tagline}: the site title (default: the challenge's long name)
+and the sentence under the home page's heading.
+\item \code{skill_baseline}: a model id to measure skill against for every variable
+(default: the group's climatology baseline, see \code{\link[=skill_baselines]{skill_baselines()}}).
+\item \code{min_forecasts} (5): forecast days a model needs in a leaderboard window
+to be ranked.
+\item \code{publish_results} (\code{true}): publish the outcome of each submitted file on
+the site, which "Check my submissions" reads.
+\item \code{key_request_url}: where a participant asks for a read-only key when the
+bucket is private (default: the contact address).
 }
 }
