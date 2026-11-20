@@ -17,6 +17,12 @@ register_step <- if (isTRUE(cfg$submissions$github$issue_registration)) {
   paste0("Ask us to add your repository to the list we read: email ", settings$contact_email,
          " with its address.")
 }
+example_link <- if (!is.null(settings$example_submission_repo)) {
+  paste0("\nSee a complete, working example at [", settings$example_submission_repo,
+         "](https://github.com/", settings$example_submission_repo, ").\n")
+} else {
+  ""
+}
 results_url <- challengeci::bucket_uri(cfg, "forecasts_bucket", "submission_results",
                                        "<model_id>.csv", scheme = "https")
 ```
@@ -25,9 +31,8 @@ results_url <- challengeci::bucket_uri(cfg, "forecasts_bucket", "submission_resu
 #| output: asis
 #| echo: false
 if (use_github) {
-  cat('
-#### Submit from a GitHub repository
-
+  cat(if (use_bucket) '#### From a GitHub repository\n' else '',
+      '
 Keep your forecasts in a **public** GitHub repository. Nothing needs to be uploaded: we read new files from the repository.
 
 1)  Put each forecast in a `forecasts/` folder, named `<theme>-<YYYY-MM-DD>-<model_id>.csv.gz`, for example `', example_theme, '-2026-01-01-my_model.csv.gz`.
@@ -46,7 +51,7 @@ models:
 3)  ', register_step, '
 
 Only the repository listed for a `model_id` can submit forecasts for it. A file is read the first time we see it, and later edits to it are ignored. We check each new file and publish the result, including the reason when a file is rejected, at `', results_url, '`.
-', sep = '')
+', example_link, sep = '')
 }
 if (use_bucket) {
   cat(if (use_github) '\n#### Upload to the submissions bucket\n\n' else '',

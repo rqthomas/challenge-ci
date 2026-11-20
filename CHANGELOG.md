@@ -34,6 +34,17 @@ behaviour.
   `_register.yaml` workflow, a trigger (`inst/workflows/register.yaml`) and an
   issue form (`inst/issue_forms/register-forecast-repo.yml`). A bot checks the
   repository, commits its row to the registry file and answers on the issue.
+- The challenge's baseline models are registered automatically (described from
+  their `method`, or by optional `long_name`, `description` and `model_type` in
+  the baseline entry) unless the model id is registered already. They now appear in
+  the catalog, the model metadata and the dashboard's plot of model types, which
+  was empty for a challenge with no registrations. `read_registered_models()`
+  gains a `baseline` column. The plot says so when no model has described its
+  approach yet.
+- The dashboard's instructions follow the submission method: with GitHub
+  submissions the overview step, the "Submitting a forecast" heading and the
+  processing text say so, and `dashboard$example_submission_repo` links a working
+  example.
 - The catalog no longer fails for a kind with nothing bundled yet (the `scores`
   part stopped with "Path does not exist .../scores/bundled-parquet/" before the
   first scoring run): it writes an empty collection, and the columns appear once

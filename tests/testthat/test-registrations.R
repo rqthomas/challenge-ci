@@ -69,3 +69,47 @@ test_that("model_metadata() handles dynamic models and missing answers", {
   expect_equal(unique(unlist(unanswered$uncertainty)), "Unknown")
   expect_true("process_error" %in% names(unanswered$uncertainty))
 })
+
+test_that("a challenge's baselines are described from their method", {
+  cfg <- test_config()
+  baselines <- baseline_registrations(cfg)
+  expect_equal(baselines$model_id, c("climatology", "persistenceRW"))
+  expect_equal(unique(baselines$project_id), "testcast")
+  expect_equal(baselines$long_name, c("Climatology", "Persistence (random walk)"))
+  expect_equal(unique(baselines$model_type), "Empirical")
+  expect_true(all(!is.na(baselines$description)))
+  expect_true(all(names(registration_columns(cfg)) %in% names(baselines)))
+
+  # An entry may describe itself; a group repeating a baseline adds nothing.
+  cfg$target_groups$Lakes$baselines[[1]]$long_name <- "Daily climatology"
+  cfg$target_groups$Lakes$baselines[[1]]$model_type <- "Statistical"
+  cfg$target_groups$Birds$baselines <- list(
+    list(model_id = "climatology", method = "climatology", schedule = "weekly"),
+    list(model_id = "example_baseline", method = "mean", schedule = "weekly"))
+  baselines <- baseline_registrations(cfg)
+  expect_equal(baselines$model_id, c("climatology", "persistenceRW"))
+  expect_equal(baselines$long_name[1], "Daily climatology")
+  expect_equal(baselines$model_type[1], "Statistical")
+
+  cfg$target_groups <- lapply(cfg$target_groups, function(g) within(g, baselines <- NULL))
+  expect_equal(nrow(baseline_registrations(cfg)), 0)
+})
+
+test_that("baselines are registered unless someone registered them already", {
+  cfg <- test_config()
+  columns <- registration_columns(cfg)
+  sheet <- tibble::as_tibble(rlang::set_names(rep(list(NA_character_), length(columns)), columns))
+  sheet[[columns[["model_id"]]]] <- "climatology"
+  sheet[[columns[["project_id"]]]] <- "testcast"
+  sheet[[columns[["long_name"]]]] <- "My own climatology"
+  sheet[[columns[["model_type"]]]] <- "Process"
+
+  models <- read_registered_models(cfg, sheet = sheet)
+  expect_equal(models$model_id, c("climatology", "persistenceRW"))
+  expect_equal(models$baseline, c(FALSE, TRUE))
+  # The registered one keeps its answers.
+  expect_equal(models$long_name[1], "My own climatology")
+  expect_equal(models$model_type[1], "Process")
+  # So the dashboard's model types count both.
+  expect_equal(model_type_label(models$model_type), c("Process", "Empirical"))
+})

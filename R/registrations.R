@@ -74,18 +74,108 @@ registration_columns <- function(cfg = list()) {
 #' sheet for a question the file leaves out; a model only in the file is
 #' registered by it, so GitHub participants need not fill in the form.
 #'
+#' The challenge's own baseline models (`target_groups$<group>$baselines`) are
+#' registered automatically unless they are registered already, so they appear in
+#' the catalog and the dashboard's model types; see [baseline_registrations()].
+#' The `baseline` column says which models were added this way.
+#'
 #' @inheritParams config_get
 #' @param sheet The registration sheet, if already read. `NULL` reads it.
 #' @param github The GitHub models from [read_github_models()], if already
 #'   read. `NULL` reads them (only when the challenge reads GitHub).
-#' @return A tibble with the short column names of [registration_columns()].
-#'   Questions missing from the sheet are `NA` columns.
+#' @return A tibble with the short column names of [registration_columns()]
+#'   (questions missing from the sheet are `NA` columns) and `baseline`, `TRUE`
+#'   for a baseline registered automatically.
 #' @export
 read_registered_models <- function(cfg, sheet = NULL, github = NULL) {
   models <- read_sheet_models(cfg, sheet)
-  if (!github_enabled(cfg) && is.null(github)) return(models)
-  github <- github %||% read_github_models(cfg)
-  merge_github_models(models, github, cfg)
+  if (github_enabled(cfg) || !is.null(github)) {
+    github <- github %||% read_github_models(cfg)
+    models <- merge_github_models(models, github, cfg)
+  }
+  add_baseline_models(models, cfg)
+}
+
+#' Registrations for the challenge's baseline models
+#'
+#' The baselines a challenge runs itself (`target_groups$<group>$baselines`) are
+#' models too, but nobody registers them through the form. This describes each
+#' one from its `method`, so it shows up in the catalog, in the model metadata
+#' and in the dashboard's plot of model types. A baseline entry may give its own
+#' `long_name`, `description` or `model_type` to replace the defaults, which
+#' are an empirical model with a one-line description of the method.
+#'
+#' @inheritParams config_get
+#' @return A tibble with the columns of [registration_columns()], one row per
+#'   baseline model id (the first group that lists it), none if the config has no
+#'   baselines.
+#' @export
+baseline_registrations <- function(cfg) {
+  columns <- names(registration_columns(cfg))
+  entries <- unlist(purrr::map(cfg$target_groups, "baselines"), recursive = FALSE)
+  rows <- purrr::map(entries, function(b) {
+    info <- baseline_descriptions[[b$method %||% ""]]
+    row <- rlang::set_names(rep(list(NA_character_), length(columns)), columns)
+    row$project_id <- cfg$project_id
+    row$model_id <- b$model_id
+    row$long_name <- b$long_name %||% info$long_name %||% b$model_id
+    row$description <- b$description %||% info$description %||%
+      paste("Baseline model", b$model_id)
+    row$model_type <- b$model_type %||% "Empirical"
+    row$code_url <- "https://github.com/eco4cast/challenge-ci/blob/main/R/baselines.R"
+    row$contact_name <- cfg$challenge_long_name %||% cfg$project_id
+    row$public_contact <- "Yes"
+    row$uses_drivers <- "No"
+    tibble::as_tibble(row)
+  })
+  baselines <- dplyr::bind_rows(rows)
+  if (nrow(baselines) == 0) {
+    empty <- rep(list(character()), length(columns))
+    return(tibble::as_tibble(rlang::set_names(empty, columns)))
+  }
+  example <- cfg$example_model_id %||% "example"
+  baselines <- baselines[!grepl(example, baselines$model_id, fixed = TRUE), ]
+  baselines[!duplicated(baselines$model_id), ]
+}
+
+baseline_descriptions <- list(
+  climatology = list(
+    long_name = "Climatology",
+    description = paste(
+      "For each site, variable and day, a normal distribution with the mean and",
+      "standard deviation of all past observations on that day of the year."
+    )
+  ),
+  weekly_climatology = list(
+    long_name = "Weekly climatology",
+    description = paste(
+      "For each site, variable and week, an ensemble drawn around the historical",
+      "mean and standard deviation of that week of the year."
+    )
+  ),
+  persistence_rw = list(
+    long_name = "Persistence (random walk)",
+    description = paste(
+      "A random walk fitted to each site and variable and started at the last",
+      "observation; the ensemble spreads as the horizon grows."
+    )
+  ),
+  mean = list(
+    long_name = "Historical mean",
+    description = paste(
+      "The mean of all past observations at each site and variable, with",
+      "bootstrapped uncertainty, for every week of the forecast."
+    )
+  )
+)
+
+# Registered models plus the baselines nobody registered, which are marked.
+add_baseline_models <- function(models, cfg) {
+  baselines <- baseline_registrations(cfg)
+  baselines <- baselines[!baselines$model_id %in% models$model_id, ]
+  models$baseline <- rep(FALSE, nrow(models))
+  baselines$baseline <- rep(TRUE, nrow(baselines))
+  dplyr::arrange(dplyr::bind_rows(models, baselines), .data$model_id)
 }
 
 #' Models registered through the registration form
@@ -271,7 +361,10 @@ write_model_metadata <- function(cfg, registered = read_registered_models(cfg)) 
   mc_connect(cfg, "main", anonymous = read_anonymously_without_key(cfg))
   dest <- bucket_uri(cfg, "model_metadata_bucket", scheme = "mc")
   existing <- sub("\\.json$", "", remote_files(dest)$key)
-  keep <- !is.na(registered$model_type) | !registered$model_id %in% existing
+  # An answered registration always replaces the record; an unanswered one, or a
+  # baseline that was registered automatically, only fills a gap.
+  baseline <- registered$baseline %||% rep(FALSE, nrow(registered))
+  keep <- (!is.na(registered$model_type) & !baseline) | !registered$model_id %in% existing
   registered <- registered[keep, ]
 
   dir <- tempfile("model_metadata")

@@ -149,11 +149,15 @@ these fields:
 | `model_id` | Model id the forecasts are submitted under. |
 | `method` | `climatology` (day-of-year mean and sd, normal), `weekly_climatology` (ISO-week mean and sd, log-normal ensemble), `persistence_rw` (random walk, bootstrapped ensemble) or `mean` (historical mean of log(x + 1), bootstrapped ensemble). |
 | `schedule` | When the baseline-forecasts workflow runs it: `daily` (its daily cron) or `weekly` (its Sunday cron). |
+| `long_name`, `description`, `model_type` | Optional. How the baseline is described in the catalog, the model metadata and the dashboard's plot of model types. Defaults: a name and one-line description of the method, and `Empirical`. |
 | `args` | Optional. `variables` (default: all of the group's), `horizon` in days (default: their `max_horizon`), and any argument of the method's function, e.g. `transform: {chla: log}` for `persistence_rw` or `exclude_current_year: true` for `climatology`. See `?challengeci::baseline_climatology` and the related help pages. |
 
 Daily baselines are issued for today. Weekly baselines are issued for the Monday
-that starts the current ISO week. Forecasts are uploaded to the submissions
-bucket and processed like any participant's.
+that starts the current ISO week. Forecasts go to the submissions bucket and are
+processed like any participant's, or are written straight to the forecasts bucket
+(`submissions$baselines_destination`). Baselines are also registered as models
+automatically, unless the model id is registered already, so they appear in the
+catalog and the dashboard.
 
 ```yaml
 Aquatics:
@@ -199,6 +203,7 @@ These settings drive the dashboard (`?render_dashboard`). All are optional.
 | `dashboard$title` | Site title. Defaults to `challenge_long_name`. |
 | `dashboard$contact_email` | Contact address shown on the home and instructions pages. |
 | `dashboard$registration_form_url` | Model registration form linked from the instructions. |
+| `dashboard$example_submission_repo` | | A GitHub repository (`owner/name`) with a working example submission. The instructions link to it when the challenge reads GitHub repositories. |
 | `dashboard$n_plot_sites` | Sites per target group in forecast plots, taken from the group's `focal_sites`. Default 2. |
 | `dashboard$leaderboard_max_horizon` | Longest horizon, in days, in the leaderboards. Default 35. |
 | `dashboard$excluded_models` | Model ids left out of the plots, keyed by variable, or `all` for every variable. |

@@ -15,8 +15,9 @@ read_registered_models(cfg, sheet = NULL, github = NULL)
 read. \code{NULL} reads them (only when the challenge reads GitHub).}
 }
 \value{
-A tibble with the short column names of \code{\link[=registration_columns]{registration_columns()}}.
-Questions missing from the sheet are \code{NA} columns.
+A tibble with the short column names of \code{\link[=registration_columns]{registration_columns()}}
+(questions missing from the sheet are \code{NA} columns) and \code{baseline}, \code{TRUE}
+for a baseline registered automatically.
 }
 \description{
 Two sources are combined. The registration sheet
@@ -27,4 +28,10 @@ describes the models it submits (see \code{\link[=read_github_models]{read_githu
 both takes its answers from the file, field by field, falling back to the
 sheet for a question the file leaves out; a model only in the file is
 registered by it, so GitHub participants need not fill in the form.
+}
+\details{
+The challenge's own baseline models (\verb{target_groups$<group>$baselines}) are
+registered automatically unless they are registered already, so they appear in
+the catalog and the dashboard's model types; see \code{\link[=baseline_registrations]{baseline_registrations()}}.
+The \code{baseline} column says which models were added this way.
 }

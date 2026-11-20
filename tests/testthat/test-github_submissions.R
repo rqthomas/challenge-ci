@@ -244,6 +244,8 @@ test_that("registered models combine the form and the repositories' files", {
   cfg <- github_cfg()
   github <- suppressWarnings(read_github_models(cfg, two_repos()))
   models <- read_registered_models(cfg, sheet = sheet_fixture(cfg), github = github)
+  # (The challenge's own baselines are registered too; see test-registrations.R.)
+  models <- models[!models$baseline, ]
   expect_equal(models$model_id, c("bobs-model", "form-only", "my-model"))
   mine <- models[models$model_id == "my-model", ]
   # The file wins where it answers, the form fills the rest.
@@ -257,7 +259,7 @@ test_that("registered models combine the form and the repositories' files", {
 test_that("without GitHub, registered models are the form's, as before", {
   cfg <- test_config()
   models <- read_registered_models(cfg, sheet = sheet_fixture(cfg))
-  expect_equal(models$model_id, c("form-only", "my-model"))
+  expect_equal(models$model_id[!models$baseline], c("form-only", "my-model"))
 })
 
 test_that("a GitHub-only challenge needs no registration sheet", {
@@ -266,5 +268,5 @@ test_that("a GitHub-only challenge needs no registration sheet", {
   cfg$model_metadata_gsheet <- NULL
   github <- suppressWarnings(read_github_models(cfg, two_repos()))
   models <- read_registered_models(cfg, github = github)
-  expect_equal(models$model_id, c("bobs-model", "my-model"))
+  expect_equal(models$model_id[!models$baseline], c("bobs-model", "my-model"))
 })

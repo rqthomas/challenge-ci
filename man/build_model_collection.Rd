@@ -32,7 +32,8 @@ build_model_collection(
 \item{out_dir}{Root of the catalog.}
 
 \item{schema}{Columns of the bundled dataset, as a tibble with \code{name} and
-\code{type}. Defaults to reading the dataset's schema from the bucket.}
+\code{type}. Defaults to reading the dataset's schema from the bucket, or to no
+columns when the inventory is empty (nothing bundled yet).}
 }
 \value{
 The target groups written, invisibly.

@@ -21,7 +21,7 @@ We provide an overview of the steps for submitting with the details below:
 2)  Register and describe your model `r if (use_github) "in the challenge-model.yaml file in your GitHub repository (described below), or" else "at"` <`r settings$registration_form_url`>. You are not required to register if your forecast submission uses the word "example" in your model_id. Any forecasts with "example" in the model_id will not be used in forecast evaluation analyses. Use `` `r cfg$project_id` `` as the challenge for which you are registering.
 3)  Generate a forecast!
 4)  Write the forecast output to a file that follows our standardized format (described below).
-5)  Submit your forecast (described below).
+5)  Submit your forecast `r if (use_github) "by committing the file to your public GitHub repository "`(described below).
 6)  Watch your forecast be evaluated as new data are collected.
 
 ## Generating a forecast
@@ -146,9 +146,9 @@ The year, month, and day are the year, month, and day the reference_datetime (ho
 For example, if a forecast starts today and tomorrow is the first forecasted day, horizon = 0 would be today and used in the file name.
 `model_id` is the id for the model name that you specified in the model registration (model_id has no spaces in it).
 
-### Uploading forecast
+### `r if (use_github) "Submitting a forecast" else "Uploading forecast"`
 
-Individual forecast files can be uploaded at any time.
+`r if (use_github) "New forecast files can be added to your GitHub repository at any time." else "Individual forecast files can be uploaded at any time."`
 The csv file can only contain one unique `model_id` and one unique `project_id`.
 
 {{< include _content/instructions-submit.qmd >}}
@@ -157,7 +157,7 @@ The csv file can only contain one unique `model_id` and one unique `project_id`.
 
 ### Processing
 
-After submission, our servers will process uploaded files by converting them to a [parquet format](`r links$forecasts`) on our public s3 storage.
+After submission, our servers will process each new file by converting it to a [parquet format](`r links$forecasts`) on our public s3 storage.
 A `pub_datetime` column will be added that denotes when a forecast was submitted.
 [Summaries](`r links$summaries`) are generated of the forecasts provide descriptive statistics of the forecast.
 
