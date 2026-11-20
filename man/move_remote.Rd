@@ -10,9 +10,9 @@ move_remote(from, to)
 remove_remote(path, recursive = FALSE)
 }
 \arguments{
-\item{from, to}{Minio client paths of the object and its new location.}
+\item{from, to}{Remote paths of the object and its new location.}
 
-\item{path}{Minio client path to delete.}
+\item{path}{Remote path to delete.}
 
 \item{recursive}{Delete everything under \code{path}.}
 }
@@ -20,5 +20,7 @@ remove_remote(path, recursive = FALSE)
 \code{TRUE}, invisibly.
 }
 \description{
-Move or delete remote objects, or only log it in a dry run
+\code{move_remote()} moves one object within a store (a server-side copy, then a
+delete). \code{remove_remote()} deletes one object, or with \code{recursive = TRUE}
+everything under a folder.
 }

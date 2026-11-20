@@ -7,13 +7,13 @@
 bundle_model(files, cfg, kind = "forecasts", alias = "main")
 }
 \arguments{
-\item{files}{Minio client paths of the model's new files.}
+\item{files}{Remote paths of the model's new files.}
 
 \item{cfg}{Configuration from \code{\link[=read_config]{read_config()}}.}
 
 \item{kind}{\code{"forecasts"} or \code{"summaries"}.}
 
-\item{alias}{Minio client alias of the main store.}
+\item{alias}{Remote connection (alias) of the main store.}
 }
 \value{
 The number of new files bundled, invisibly.

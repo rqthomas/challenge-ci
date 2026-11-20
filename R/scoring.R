@@ -155,9 +155,9 @@ clear_scratch <- function(cfg, folder) {
     unlink(scratch_uri(cfg, folder), recursive = TRUE)
     return(invisible())
   }
-  mc_connect(cfg, "scratch")
-  path <- bucket_uri(cfg, "scratch", folder, scheme = "mc")
-  if (nrow(remote_files(path)) > 0) minioclient::mc_rm(path, recursive = TRUE)
+  remote_connect(cfg, "scratch")
+  path <- bucket_uri(cfg, "scratch", folder, scheme = "remote")
+  remote_delete(path, recursive = TRUE)
   invisible()
 }
 
@@ -229,7 +229,7 @@ score_group <- function(group, cfg) {
                  paste0("duration=", group$duration),
                  paste0("variable=", group$variable),
                  paste0("model_id=", group$model_id))
-  existing <- remote_files(bucket_uri(cfg, "scores_bucket", partition, scheme = "mc"))
+  existing <- remote_files(bucket_uri(cfg, "scores_bucket", partition, scheme = "remote"))
   duckdb_connect(cfg, "main", anonymous = read_anonymously_without_key(cfg), conn = conn)
   merged <- merge_scores(
     new_scores,
@@ -242,7 +242,7 @@ score_group <- function(group, cfg) {
   merged |>
     dplyr::group_by(.data$project_id, .data$duration, .data$variable, .data$model_id) |>
     duckdbfs::write_dataset(out_dir, conn = conn)
-  upload_dir(out_dir, bucket_uri(cfg, "scores_bucket", "bundled-parquet", scheme = "mc"))
+  upload_dir(out_dir, bucket_uri(cfg, "scores_bucket", "bundled-parquet", scheme = "remote"))
   invisible(nrow(new_scores))
 }
 
@@ -257,7 +257,7 @@ score_group <- function(group, cfg) {
 #' @export
 run_scoring <- function(cfg, since = Sys.Date() - lubridate::dmonths(6)) {
   log_step("Scoring")
-  mc_connect(cfg, "main", anonymous = read_anonymously_without_key(cfg))
+  remote_connect(cfg, "main", anonymous = read_anonymously_without_key(cfg))
   groups <- prepare_scoring(cfg, since = since)
   log_step("{nrow(groups)} group{?s} to score")
 

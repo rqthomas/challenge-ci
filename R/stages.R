@@ -68,7 +68,6 @@ run_each <- function(items, fun, what) {
 
 stage_runners <- list(
   submissions = function(args) {
-    ensure_mc()
     run_submissions(read_config())
   },
   register = function(args) {
@@ -77,19 +76,16 @@ stage_runners <- list(
                      number = Sys.getenv("ISSUE_NUMBER"))
   },
   bundle = function(args) {
-    ensure_mc()
     cfg <- read_config()
     kinds <- if (length(args) == 0) c("forecasts", "summaries") else args
     run_each(kinds, function(kind) run_bundling(cfg, kind), "Bundling")
   },
   score = function(args) {
-    ensure_mc()
     cfg <- read_config()
     if (length(args) == 0) run_scoring(cfg) else run_scoring(cfg, since = as.Date(args[1]))
   },
   baselines = function(args) {
     if (length(args) == 0) cli::cli_abort("Give a schedule: {.val daily} or {.val weekly}.")
-    ensure_mc()
     cfg <- read_config()
     groups <- if (length(args) > 1) args[-1] else names(cfg$target_groups)
     run_each(groups, function(group) run_baselines(cfg, group, schedule = args[1]), "Baselines")
@@ -109,14 +105,11 @@ stage_runners <- list(
     update_stage3(cfg, overlap_days = if (rebuild) Inf else 3)
   },
   catalog = function(args) {
-    ensure_mc()
     cfg <- read_config()
     if (length(args) == 0) run_catalog(cfg) else run_catalog(cfg, args)
   },
   dashboard = function(args) {
     cfg <- read_config()
-    # A private store's targets are downloaded with mc (see targets_files()).
-    if (!anonymous_reads(cfg)) ensure_mc()
     if (length(args) == 0) render_dashboard(cfg) else render_dashboard(cfg, out_dir = args[1])
   },
   check = function(args) {

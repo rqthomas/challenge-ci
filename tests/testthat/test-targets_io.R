@@ -112,15 +112,18 @@ test_that("a public store's targets are read by URL, a private store's are downl
 
 test_that("download_targets() copies the object to a local file", {
   copied <- NULL
-  testthat::local_mocked_bindings(mc_connect = function(...) invisible(NULL))
   testthat::local_mocked_bindings(
-    mc_cp = function(from, to) copied <<- list(from, to),
-    .package = "minioclient"
+    remote_connect = function(...) invisible(NULL),
+    remote_download = function(path, dest) {
+      copied <<- list(path, dest)
+      writeLines("site_id", dest)
+    }
   )
   path <- download_targets(private_cfg(), "main/test-bucket/lakes-targets.csv.gz")
   expect_equal(basename(path), "lakes-targets.csv.gz")
   expect_equal(copied[[1]], "main/test-bucket/lakes-targets.csv.gz")
-  expect_equal(copied[[2]], shQuote(path))
+  expect_equal(copied[[2]], path)
+  expect_equal(readLines(path), "site_id")
 })
 
 test_that("the published targets of a private store are downloaded, not fetched by URL", {
@@ -128,12 +131,12 @@ test_that("the published targets of a private store are downloaded, not fetched 
   readr::write_csv(tibble::tibble(site_id = "A", observation = 1), local)
   seen <- NULL
   testthat::local_mocked_bindings(
-    mc_connect = function(cfg, store, alias = store, anonymous = FALSE) {
+    remote_connect = function(cfg, store, alias = store, anonymous = FALSE) {
       seen <<- list(alias = alias, anonymous = anonymous)
     },
+    remote_exists = function(path) TRUE,
     download_targets = function(cfg, object) local
   )
-  testthat::local_mocked_bindings(mc_ls = function(...) "file", .package = "minioclient")
   published <- read_published_targets(private_cfg(), "Lakes")
   expect_equal(published$site_id, "A")
   # The alias is connected with the key.

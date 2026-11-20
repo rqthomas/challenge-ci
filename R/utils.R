@@ -17,7 +17,7 @@
 #'   removed and the rest of the path kept. It creates the path's parent
 #'   folder, because duckdb cannot write into a folder whose parent is missing.
 #'
-#' @param uri Destination: an `s3://` URI or a minio client path
+#' @param uri Destination: an `s3://` URI or a remote path
 #'   (`alias/bucket/...`).
 #' @return `is_dry_run()`, `is_verbose()`: logical scalar. `dry_run_dir()`, `output_uri()`:
 #'   character scalar.

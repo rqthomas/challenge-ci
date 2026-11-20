@@ -8,11 +8,11 @@
 #' Where a target group's targets file is stored
 #'
 #' The group's `targets_file` setting is a public URL on the main store's
-#' endpoint. This returns the same object as a minio client path.
+#' endpoint. This returns the same object as a remote path.
 #'
 #' @inheritParams group_config
-#' @param alias Minio client alias of the main store.
-#' @return A minio client path.
+#' @param alias Remote connection (alias) of the main store.
+#' @return A remote path.
 #' @export
 targets_object <- function(cfg, group, alias = "main") {
   url <- group_config(cfg, group)$targets_file
@@ -67,11 +67,11 @@ targets_group <- function(cfg, url) {
 
 # Download a targets file from the private main store into a temporary folder.
 download_targets <- function(cfg, object) {
-  mc_connect(cfg, "main")
+  remote_connect(cfg, "main")
   dir <- file.path(tempdir(), "targets", gsub("[^A-Za-z0-9]+", "_", dirname(object)))
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   dest <- file.path(dir, basename(object))
-  minioclient::mc_cp(object, shQuote(dest))
+  remote_download(object, dest)
   dest
 }
 
@@ -109,9 +109,9 @@ format_targets <- function(targets, cfg, duration) {
 #' @export
 read_published_targets <- function(cfg, group) {
   url <- group_config(cfg, group)$targets_file
-  mc_connect(cfg, "main", alias = "main_public", anonymous = anonymous_reads(cfg))
+  remote_connect(cfg, "main", alias = "main_public", anonymous = anonymous_reads(cfg))
   object <- targets_object(cfg, group, alias = "main_public")
-  if (length(minioclient::mc_ls(object)) == 0) return(NULL)
+  if (!remote_exists(object)) return(NULL)
   # A private store's file cannot be fetched by its URL.
   path <- if (anonymous_reads(cfg)) url else download_targets(cfg, object)
   readr::read_csv(path, guess_max = 1e6, show_col_types = FALSE, progress = FALSE)
@@ -194,6 +194,6 @@ write_targets <- function(targets, cfg, group) {
   dir.create(dirname(file))
   on.exit(unlink(dirname(file), recursive = TRUE))
   readr::write_csv(targets, file)
-  if (!is_dry_run()) mc_connect(cfg, "main")
+  if (!is_dry_run()) remote_connect(cfg, "main")
   upload_file(file, dest)
 }

@@ -140,7 +140,7 @@ test_that("baselines can be written straight to the forecasts bucket", {
   withr::local_envvar(DRY_RUN = "true", DRY_RUN_DIR = dir)
   results <- NULL
   testthat::local_mocked_bindings(
-    mc_connect = function(...) invisible(NULL),
+    remote_connect = function(...) invisible(NULL),
     baseline_written = function(marker) FALSE,
     write_submission_results = function(cfg, rows) results <<- rows
   )
@@ -163,7 +163,7 @@ test_that("a baseline already written is left alone", {
   dir <- withr::local_tempdir()
   withr::local_envvar(DRY_RUN = "true", DRY_RUN_DIR = dir)
   testthat::local_mocked_bindings(
-    mc_connect = function(...) invisible(NULL),
+    remote_connect = function(...) invisible(NULL),
     baseline_written = function(marker) TRUE
   )
   expect_message(submit_forecast(example_forecast(), direct_cfg(), "lakes"),
@@ -177,7 +177,7 @@ test_that("a baseline that cannot be processed fails and leaves no marker", {
   cfg <- direct_cfg()
   cfg$submissions$min_reference_date <- "2030-01-01"
   testthat::local_mocked_bindings(
-    mc_connect = function(...) invisible(NULL),
+    remote_connect = function(...) invisible(NULL),
     baseline_written = function(marker) FALSE,
     write_submission_results = function(cfg, rows) NULL
   )

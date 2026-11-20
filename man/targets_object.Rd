@@ -11,12 +11,12 @@ targets_object(cfg, group, alias = "main")
 
 \item{group}{Name of a target group, e.g. \code{"Aquatics"}.}
 
-\item{alias}{Minio client alias of the main store.}
+\item{alias}{Remote connection (alias) of the main store.}
 }
 \value{
-A minio client path.
+A remote path.
 }
 \description{
 The group's \code{targets_file} setting is a public URL on the main store's
-endpoint. This returns the same object as a minio client path.
+endpoint. This returns the same object as a remote path.
 }

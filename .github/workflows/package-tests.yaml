@@ -34,6 +34,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # The image is built from main, so a change to DESCRIPTION is tested here
+      # before the image has the new dependency: install what it lacks.
+      - name: Install dependencies the image lacks
+        run: Rscript .github/scripts/install-missing-deps.R
+
       - name: Unit tests
         run: Rscript -e 'devtools::test(stop_on_failure = TRUE)'
 

@@ -4,7 +4,7 @@
 \alias{bucket_uri}
 \title{Build a path inside one of the challenge's buckets}
 \usage{
-bucket_uri(cfg, key, ..., scheme = c("s3", "mc", "https"), alias = NULL)
+bucket_uri(cfg, key, ..., scheme = c("s3", "remote", "https"), alias = NULL)
 }
 \arguments{
 \item{cfg}{Configuration from \code{\link[=read_config]{read_config()}}.}
@@ -14,11 +14,12 @@ bucket_uri(cfg, key, ..., scheme = c("s3", "mc", "https"), alias = NULL)
 
 \item{...}{Path parts to add, e.g. \code{"bundled-parquet"}, \code{"project_id=x"}.}
 
-\item{scheme}{\code{"s3"} for duckdb and arrow (\verb{s3://bucket/...}), \code{"mc"} for
-the minio client (\code{alias/bucket/...}), or \code{"https"} for public URLs.}
+\item{scheme}{\code{"s3"} for duckdb and arrow (\verb{s3://bucket/...}), \code{"remote"} for
+\code{\link[=remote_files]{remote_files()}}, \code{\link[=upload_file]{upload_file()}} and the like (\code{alias/bucket/...}), or
+\code{"https"} for public URLs.}
 
-\item{alias}{The minio client alias, for \code{scheme = "mc"}. Defaults to the
-bucket's store name, which is the alias \code{\link[=mc_connect]{mc_connect()}} sets by default.}
+\item{alias}{The remote connection's alias, for \code{scheme = "remote"}. Defaults to the
+bucket's store name, which is the alias \code{\link[=remote_connect]{remote_connect()}} sets by default.}
 }
 \value{
 A character scalar.
@@ -33,6 +34,6 @@ parts and formats the result for the tool that will use it.
 cfg <- list(endpoint = "sdsc.osn.xsede.org",
             forecasts_bucket = "bucket01/challenges/forecasts")
 bucket_uri(cfg, "forecasts_bucket", "bundled-parquet")
-bucket_uri(cfg, "forecasts_bucket", "bundled-parquet", scheme = "mc")
+bucket_uri(cfg, "forecasts_bucket", "bundled-parquet", scheme = "remote")
 bucket_uri(cfg, "forecasts_bucket", scheme = "https")
 }

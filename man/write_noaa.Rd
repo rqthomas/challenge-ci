@@ -23,6 +23,6 @@ Calls \code{write} with an empty local folder, then uploads whatever it wrote
 there into the product's folder with \code{\link[=upload_dir]{upload_dir()}}, keeping the folder
 layout (\verb{reference_datetime=.../site_id=.../part-0.parquet}). Files already
 in the product are replaced only where the same file is written again.
-Uploading with mc, rather than letting arrow write to S3, is what every
+Uploading with the S3 client, rather than letting arrow write to S3, is what every
 other stage does: it works on OSN, and a dry run sends it to \code{DRY_RUN_DIR}.
 }

@@ -60,12 +60,13 @@ jobs:
           token: ${{ secrets.TEMPLATE_TOKEN || github.token }}
           path: template
 
-      # mc for uploads and listings (stopgap until the move to rclone; see the action).
-      - uses: ./engine/.github/actions/install-mc
-
+      # The image is built from main, so a dependency added by this change may not be
+      # in it yet: install what it lacks, then the engine itself.
       - name: Install the engine from this checkout
         working-directory: .
-        run: R CMD INSTALL --no-test-load engine
+        run: |
+          Rscript engine/.github/scripts/install-missing-deps.R engine
+          R CMD INSTALL --no-test-load engine
 
       - name: check
         run: Rscript -e 'challengeci::run_stage()' check

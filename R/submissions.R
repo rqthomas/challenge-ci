@@ -18,7 +18,7 @@ challenge_themes <- function(cfg) {
   unname(purrr::imap_chr(cfg$target_groups, \(g, group) g$theme %||% tolower(group)))
 }
 
-# minio client aliases used for the submissions bucket.
+# Remote connections (aliases) used for the submissions bucket.
 submissions_alias <- "submissions"
 submissions_public_alias <- "submissions_public"
 
@@ -32,14 +32,14 @@ submissions_public_alias <- "submissions_public"
 #' @return Character vector of processed submission keys.
 #' @export
 read_manifest <- function(cfg) {
-  remote <- bucket_uri(cfg, "processed_submissions", scheme = "mc")
-  if (length(minioclient::mc_ls(remote)) == 0) {
+  remote <- bucket_uri(cfg, "processed_submissions", scheme = "remote")
+  if (!remote_exists(remote)) {
     cli::cli_inform("No processed-submissions record found; starting a new one.")
     return(character(0))
   }
   local <- tempfile(fileext = ".csv")
   on.exit(unlink(local))
-  minioclient::mc_cp(remote, local)
+  remote_download(remote, local)
   manifest <- readr::read_csv(local, show_col_types = FALSE, progress = FALSE)
   if (!"key" %in% names(manifest)) {
     cli::cli_abort("Processed-submissions record {.path {remote}} has no {.field key} column.")
@@ -54,7 +54,7 @@ write_manifest <- function(cfg, keys) {
   local <- tempfile(fileext = ".csv")
   on.exit(unlink(local))
   readr::write_csv(tibble::tibble(key = keys), local)
-  upload_file(local, bucket_uri(cfg, "processed_submissions", scheme = "mc"))
+  upload_file(local, bucket_uri(cfg, "processed_submissions", scheme = "remote"))
 }
 
 #' Decide which submissions to download
@@ -179,7 +179,7 @@ process_submission <- function(path, cfg, out_dir, pub_datetime = Sys.time()) {
 run_submissions <- function(cfg) {
   log_step("Processing submissions")
   # A dry run without the main store's key reads its public buckets anonymously.
-  mc_connect(cfg, "main", anonymous = is_dry_run() && read_anonymously_without_key(cfg))
+  remote_connect(cfg, "main", anonymous = is_dry_run() && read_anonymously_without_key(cfg))
 
   use_bucket <- isTRUE(config_get(cfg, "submissions", "use_bucket", default = TRUE))
   use_github <- github_enabled(cfg)
@@ -245,13 +245,13 @@ store_submission <- function(cfg, local, key, out_dir, time_stamp) {
   outcome <- process_submission(local, cfg, out_dir)
   if (outcome$status == "processed") {
     upload_dir(file.path(out_dir, "parquet"),
-               bucket_uri(cfg, "forecasts_bucket", "parquet", scheme = "mc"))
+               bucket_uri(cfg, "forecasts_bucket", "parquet", scheme = "remote"))
     upload_dir(file.path(out_dir, "summaries"),
-               bucket_uri(cfg, "summaries_bucket", "summaries", scheme = "mc"))
+               bucket_uri(cfg, "summaries_bucket", "summaries", scheme = "remote"))
   }
   upload_file(local, bucket_uri(cfg, "forecasts_bucket", "raw",
                                 paste0("T", time_stamp, "_", basename(key)),
-                                scheme = "mc"))
+                                scheme = "remote"))
   outcome
 }
 
@@ -301,8 +301,8 @@ handle_submission <- function(cfg, state, processed, key, source, sha, model_id,
 # The submissions bucket: list with the key, read and delete anonymously (see
 # the note at the top of this file).
 process_bucket_submissions <- function(cfg, state) {
-  mc_connect(cfg, "submissions", alias = submissions_alias)
-  mc_connect(cfg, "submissions", alias = submissions_public_alias, anonymous = TRUE)
+  remote_connect(cfg, "submissions", alias = submissions_alias)
+  remote_connect(cfg, "submissions", alias = submissions_public_alias, anonymous = TRUE)
 
   bucket <- config_get(cfg, "submissions_bucket")
   public_key <- function(key) paste0(submissions_public_alias, "/", bucket, "/", key)
@@ -343,7 +343,7 @@ process_bucket_submissions <- function(cfg, state) {
     handled <- handle_submission(
       cfg, state, processed, key, source = "bucket", sha = NA_character_,
       model_id = parse_submission_filename(key)$model_id,
-      fetch = function(local) minioclient::mc_cp(public_key(key), shQuote(local)),
+      fetch = function(local) remote_download(public_key(key), local),
       after_record = function() n_removed <<- n_removed + remove_submission(key)
     )
     processed <- handled$processed

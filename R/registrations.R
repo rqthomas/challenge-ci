@@ -358,8 +358,8 @@ model_metadata <- function(reg) {
 #' @return The number of records written, invisibly.
 #' @export
 write_model_metadata <- function(cfg, registered = read_registered_models(cfg)) {
-  mc_connect(cfg, "main", anonymous = read_anonymously_without_key(cfg))
-  dest <- bucket_uri(cfg, "model_metadata_bucket", scheme = "mc")
+  remote_connect(cfg, "main", anonymous = read_anonymously_without_key(cfg))
+  dest <- bucket_uri(cfg, "model_metadata_bucket", scheme = "remote")
   existing <- sub("\\.json$", "", remote_files(dest)$key)
   # An answered registration always replaces the record; an unanswered one, or a
   # baseline that was registered automatically, only fills a gap.

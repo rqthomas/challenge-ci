@@ -59,14 +59,22 @@ optional and the defaults keep today's behaviour.
   part stopped with "Path does not exist .../scores/bundled-parquet/" before the
   first scoring run): it writes an empty collection, and the columns appear once
   data exist.
-- `ensure_mc()` installs the MinIO client from its pinned GitHub release (checked
-  against a SHA-256) when it is missing, and every stage uses it in place of
-  `minioclient::install_mc()`, which fails with HTTP 410 because MinIO withdrew
-  its downloads. Stages and targets scripts now work on a machine or in a
-  workflow that has not pre-installed mc. New dependency: openssl (already
-  installed with httr2). Targets scripts should call `ensure_mc()`.
-- The dashboard workflow installs mc from GitHub before building, so a private
-  store (`public_read: false`) no longer fails on the withdrawn MinIO download.
+- **The MinIO client is gone.** `mc` and `minioclient` are unsupported (the MinIO
+  download answers HTTP 410), so every listing, download, upload, move and delete of
+  S3 objects now goes through the [paws.storage](https://github.com/paws-r/paws) R
+  package: nothing is downloaded at run time and no program is installed. New
+  dependency: paws.storage (>= 0.11.0); removed: minioclient and openssl. Nothing to
+  change in a challenge's config. Large files upload in parts and a repeated folder
+  upload sends only what changed. Removed or renamed (a challenge's scripts must
+  follow):
+  - `ensure_mc()` is removed, and so is the `install-mc` action (the workflows no
+    longer install anything). **Targets scripts: delete the line that calls
+    `minioclient::install_mc()` or `install_mc()`.**
+  - `mc_connect()` is now `remote_connect()`; `mc_to_s3()` is now `remote_to_s3()`;
+    `bucket_uri(scheme = "mc")` is now `bucket_uri(scheme = "remote")`. A "remote
+    path" is `<alias>/<bucket>/<key>` as before.
+  - New: `remote_exists()` and `remote_download()`; `remote_files()` also returns
+    each file's `etag`.
 - `update-engine` workflow (`_update-engine.yaml`, trigger in
   `inst/workflows/update-engine.yaml`): moves every workflow of a challenge to a
   chosen engine release, or the latest, and opens a pull request. Needs the

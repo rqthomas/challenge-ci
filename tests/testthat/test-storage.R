@@ -2,7 +2,7 @@ test_that("bucket_uri() formats paths for each tool", {
   cfg <- test_config()
   expect_equal(bucket_uri(cfg, "forecasts_bucket", "bundled-parquet"),
                "s3://test-bucket/challenges/forecasts/bundled-parquet")
-  expect_equal(bucket_uri(cfg, "forecasts_bucket", "bundled-parquet", scheme = "mc"),
+  expect_equal(bucket_uri(cfg, "forecasts_bucket", "bundled-parquet", scheme = "remote"),
                "main/test-bucket/challenges/forecasts/bundled-parquet")
   expect_equal(bucket_uri(cfg, "scores_bucket", scheme = "https"),
                "https://s3.example.org/test-bucket/challenges/scores")
@@ -10,11 +10,11 @@ test_that("bucket_uri() formats paths for each tool", {
 
 test_that("bucket_uri() picks the store, and alias, from the bucket", {
   cfg <- test_config()
-  expect_equal(bucket_uri(cfg, "submissions_bucket", "raw", scheme = "mc"),
+  expect_equal(bucket_uri(cfg, "submissions_bucket", "raw", scheme = "remote"),
                "submissions/submissions/raw")
   expect_equal(bucket_uri(cfg, "scratch", "score_me", scheme = "https"),
                "https://scratch.example.org/scratch-bucket/tmp/score_me")
-  expect_equal(bucket_uri(cfg, "forecasts_bucket", scheme = "mc", alias = "osn"),
+  expect_equal(bucket_uri(cfg, "forecasts_bucket", scheme = "remote", alias = "osn"),
                "osn/test-bucket/challenges/forecasts")
 })
 

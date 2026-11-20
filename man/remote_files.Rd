@@ -2,16 +2,17 @@
 % Please edit documentation in R/remote.R
 \name{remote_files}
 \alias{remote_files}
-\title{List the files under a minio client path}
+\title{List the files under a remote path}
 \usage{
 remote_files(path)
 }
 \arguments{
-\item{path}{Minio client path (\code{alias/bucket/prefix}).}
+\item{path}{Remote path (\code{alias/bucket/prefix}).}
 }
 \value{
-A tibble with columns \code{path} (full minio client path), \code{key}
-(relative to \code{path}) and \code{bytes}. One row per file.
+A tibble with columns \code{path} (full remote path), \code{key} (relative to
+\code{path}), \code{bytes} and \code{etag} (the object's ETag: the MD5 of a file uploaded
+in one piece). One row per file.
 }
 \description{
 Folder markers are dropped. A prefix that does not exist gives an empty

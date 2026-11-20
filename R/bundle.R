@@ -98,15 +98,15 @@ merge_bundle <- function(new, old, out_file, drop_incomplete = TRUE,
 #' processed while bundling runs waits for the next run instead of being
 #' archived unbundled.
 #'
-#' @param files Minio client paths of the model's new files.
+#' @param files Remote paths of the model's new files.
 #' @inheritParams config_get
 #' @inheritParams bundle_layout
-#' @param alias Minio client alias of the main store.
+#' @param alias Remote connection (alias) of the main store.
 #' @return The number of new files bundled, invisibly.
 #' @export
 bundle_model <- function(files, cfg, kind = "forecasts", alias = "main") {
   layout <- bundle_layout(kind)
-  base <- bucket_uri(cfg, layout$bucket, scheme = "mc", alias = alias)
+  base <- bucket_uri(cfg, layout$bucket, scheme = "remote", alias = alias)
   new_prefix <- paste0(base, "/", layout$new, "/")
   swap_folder <- function(path, folder) {
     paste0(base, "/", folder, "/", substring(path, nchar(new_prefix) + 1))
@@ -128,8 +128,8 @@ bundle_model <- function(files, cfg, kind = "forecasts", alias = "main") {
   out_file <- tempfile(fileext = ".parquet")
   on.exit(unlink(out_file), add = TRUE)
   merge_bundle(
-    new = mc_to_s3(files, alias),
-    old = if (length(existing) == 1) mc_to_s3(existing, alias) else NULL,
+    new = remote_to_s3(files, alias),
+    old = if (length(existing) == 1) remote_to_s3(existing, alias) else NULL,
     out_file = out_file,
     drop_incomplete = kind == "forecasts",
     conn = conn
@@ -157,7 +157,7 @@ run_bundling <- function(cfg, kind = c("forecasts", "summaries")) {
   kind <- rlang::arg_match(kind)
   layout <- bundle_layout(kind)
   log_step("Bundling {kind}")
-  mc_connect(cfg, "main", anonymous = is_dry_run() && read_anonymously_without_key(cfg))
+  remote_connect(cfg, "main", anonymous = is_dry_run() && read_anonymously_without_key(cfg))
 
   count_bundled <- function() {
     if (!is_verbose()) return(invisible())
@@ -171,7 +171,7 @@ run_bundling <- function(cfg, kind = c("forecasts", "summaries")) {
 
   new_files <- remote_files(bucket_uri(cfg, layout$bucket, layout$new,
                                        paste0("project_id=", cfg$project_id),
-                                       scheme = "mc"))$path
+                                       scheme = "remote"))$path
   models <- files_by_model(new_files)
   log_step("{length(new_files)} new file{?s} from {length(models)} model{?s}")
 

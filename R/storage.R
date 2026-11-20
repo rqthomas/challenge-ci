@@ -96,10 +96,11 @@ store_region <- function(cfg, store = "main") {
 
 #' Connect to a store
 #'
-#' `mc_connect()` registers a minio client alias, which `mc_cp()`,
-#' `mc_ls()` and similar functions then use as a path prefix.
+#' `s3_connect()` connects a store for both kinds of access. [remote_connect()]
+#' makes the S3 client that [remote_files()], [upload_file()] and the like use,
+#' filed under an alias that is the first part of their remote paths.
 #' `duckdb_connect()` registers a duckdb secret so that `duckdbfs` can read and
-#' write `s3://` paths in the store. `s3_connect()` does both.
+#' write `s3://` paths in the store.
 #'
 #' Each duckdb secret is scoped to the store's bucket, so one connection can
 #' hold secrets for several stores (for example main and scratch while
@@ -107,29 +108,21 @@ store_region <- function(cfg, store = "main") {
 #' connections on the same duckdb connection replace each other.
 #'
 #' @inheritParams store_credentials
-#' @param alias Name for the minio client alias. Defaults to the store name.
+#' @param alias Name for the remote connection. Defaults to the store name.
 #' @param conn duckdb connection. Defaults to duckdbfs's cached connection.
-#' @return `mc_connect()` and `s3_connect()`: the alias, invisibly.
-#'   `duckdb_connect()`: `conn`, invisibly.
+#' @return `s3_connect()`: the alias, invisibly. `duckdb_connect()`: `conn`,
+#'   invisibly.
 #' @export
 #' @examples
 #' \dontrun{
 #' cfg <- read_config()
 #' s3_connect(cfg, "main")
-#' minioclient::mc_ls(bucket_uri(cfg, "forecasts_bucket", scheme = "mc"))
+#' remote_files(bucket_uri(cfg, "forecasts_bucket", scheme = "remote"))
 #' }
 s3_connect <- function(cfg, store = "main", alias = store, anonymous = FALSE,
                        conn = duckdbfs::cached_connection()) {
-  mc_connect(cfg, store, alias = alias, anonymous = anonymous)
+  remote_connect(cfg, store, alias = alias, anonymous = anonymous)
   duckdb_connect(cfg, store, anonymous = anonymous, conn = conn)
-  invisible(alias)
-}
-
-#' @rdname s3_connect
-#' @export
-mc_connect <- function(cfg, store = "main", alias = store, anonymous = FALSE) {
-  creds <- store_credentials(cfg, store, anonymous = anonymous)
-  minioclient::mc_alias_set(alias, creds$endpoint, creds$key, creds$secret)
   invisible(alias)
 }
 
@@ -161,19 +154,20 @@ duckdb_connect <- function(cfg, store = "main", anonymous = FALSE,
 #' @param key Name of the config setting holding the bucket path, such as
 #'   `"forecasts_bucket"`. Use `"scratch"` for the scoring scratch bucket.
 #' @param ... Path parts to add, e.g. `"bundled-parquet"`, `"project_id=x"`.
-#' @param scheme `"s3"` for duckdb and arrow (`s3://bucket/...`), `"mc"` for
-#'   the minio client (`alias/bucket/...`), or `"https"` for public URLs.
-#' @param alias The minio client alias, for `scheme = "mc"`. Defaults to the
-#'   bucket's store name, which is the alias [mc_connect()] sets by default.
+#' @param scheme `"s3"` for duckdb and arrow (`s3://bucket/...`), `"remote"` for
+#'   [remote_files()], [upload_file()] and the like (`alias/bucket/...`), or
+#'   `"https"` for public URLs.
+#' @param alias The remote connection's alias, for `scheme = "remote"`. Defaults to the
+#'   bucket's store name, which is the alias [remote_connect()] sets by default.
 #' @return A character scalar.
 #' @export
 #' @examples
 #' cfg <- list(endpoint = "sdsc.osn.xsede.org",
 #'             forecasts_bucket = "bucket01/challenges/forecasts")
 #' bucket_uri(cfg, "forecasts_bucket", "bundled-parquet")
-#' bucket_uri(cfg, "forecasts_bucket", "bundled-parquet", scheme = "mc")
+#' bucket_uri(cfg, "forecasts_bucket", "bundled-parquet", scheme = "remote")
 #' bucket_uri(cfg, "forecasts_bucket", scheme = "https")
-bucket_uri <- function(cfg, key, ..., scheme = c("s3", "mc", "https"),
+bucket_uri <- function(cfg, key, ..., scheme = c("s3", "remote", "https"),
                        alias = NULL) {
   scheme <- rlang::arg_match(scheme)
   path <- paste(c(bucket_path(cfg, key), ...), collapse = "/")
@@ -181,7 +175,7 @@ bucket_uri <- function(cfg, key, ..., scheme = c("s3", "mc", "https"),
   store <- bucket_key_store(key)
   switch(scheme,
     s3 = paste0("s3://", path),
-    mc = paste0(alias %||% store, "/", path),
+    remote = paste0(alias %||% store, "/", path),
     https = paste0("https://", store_credentials(cfg, store, anonymous = TRUE)$endpoint,
                    "/", path)
   )

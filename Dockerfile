@@ -17,7 +17,7 @@ RUN apt-get update && apt-get -y install --no-install-recommends libnetcdf-dev l
     && update-ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Package dependencies, then the dashboard's.
-RUN install2.r --error devtools remotes pkgload desc httr2 minioclient duckdbfs \
+RUN install2.r --error devtools remotes pkgload desc httr2 paws.storage duckdbfs \
     fable fabletools tsibble imputeTS scoringRules \
     patchwork ggiraph bslib bsicons leaflet
 

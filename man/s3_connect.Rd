@@ -2,7 +2,6 @@
 % Please edit documentation in R/storage.R
 \name{s3_connect}
 \alias{s3_connect}
-\alias{mc_connect}
 \alias{duckdb_connect}
 \title{Connect to a store}
 \usage{
@@ -13,8 +12,6 @@ s3_connect(
   anonymous = FALSE,
   conn = duckdbfs::cached_connection()
 )
-
-mc_connect(cfg, store = "main", alias = store, anonymous = FALSE)
 
 duckdb_connect(
   cfg,
@@ -28,7 +25,7 @@ duckdb_connect(
 
 \item{store}{One of \code{"main"}, \code{"submissions"}, \code{"noaa"} or \code{"scratch"}.}
 
-\item{alias}{Name for the minio client alias. Defaults to the store name.}
+\item{alias}{Name for the remote connection. Defaults to the store name.}
 
 \item{anonymous}{If \code{TRUE}, return empty credentials for public read-only
 access instead of reading environment variables.}
@@ -36,14 +33,15 @@ access instead of reading environment variables.}
 \item{conn}{duckdb connection. Defaults to duckdbfs's cached connection.}
 }
 \value{
-\code{mc_connect()} and \code{s3_connect()}: the alias, invisibly.
-\code{duckdb_connect()}: \code{conn}, invisibly.
+\code{s3_connect()}: the alias, invisibly. \code{duckdb_connect()}: \code{conn},
+invisibly.
 }
 \description{
-\code{mc_connect()} registers a minio client alias, which \code{mc_cp()},
-\code{mc_ls()} and similar functions then use as a path prefix.
+\code{s3_connect()} connects a store for both kinds of access. \code{\link[=remote_connect]{remote_connect()}}
+makes the S3 client that \code{\link[=remote_files]{remote_files()}}, \code{\link[=upload_file]{upload_file()}} and the like use,
+filed under an alias that is the first part of their remote paths.
 \code{duckdb_connect()} registers a duckdb secret so that \code{duckdbfs} can read and
-write \verb{s3://} paths in the store. \code{s3_connect()} does both.
+write \verb{s3://} paths in the store.
 }
 \details{
 Each duckdb secret is scoped to the store's bucket, so one connection can
@@ -55,6 +53,6 @@ connections on the same duckdb connection replace each other.
 \dontrun{
 cfg <- read_config()
 s3_connect(cfg, "main")
-minioclient::mc_ls(bucket_uri(cfg, "forecasts_bucket", scheme = "mc"))
+remote_files(bucket_uri(cfg, "forecasts_bucket", scheme = "remote"))
 }
 }

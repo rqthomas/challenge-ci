@@ -1,8 +1,8 @@
 name: Set up a challenge job
 description: >
   The steps every job needs before running an R entry point inside the
-  challenge container: trust the checkout, install mc, and optionally refresh
-  the CA certificates. Run after actions/checkout.
+  challenge container: trust the checkout and optionally refresh the CA
+  certificates. Run after actions/checkout.
 
 inputs:
   refresh-ca:
@@ -16,11 +16,6 @@ runs:
     - name: Trust the checkout
       shell: bash
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-    # Engine actions are referenced by full name: inside a workflow called from
-    # a challenge repo, ./ paths point at the challenge's checkout. The release
-    # workflow rewrites eco4cast/challenge-ci and @main to the released version.
-    - uses: eco4cast/challenge-ci/.github/actions/install-mc@main
 
     - name: Refresh CA certificates
       if: inputs.refresh-ca == 'true'

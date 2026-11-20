@@ -356,7 +356,7 @@ submit_forecast <- function(forecast, cfg, theme) {
   if (baselines_destination(cfg) == "forecasts_bucket") {
     write_baseline(cfg, file)
   } else {
-    if (!is_dry_run()) mc_connect(cfg, "submissions", alias = submissions_alias)
+    if (!is_dry_run()) remote_connect(cfg, "submissions", alias = submissions_alias)
     upload_file(file, paste0(submissions_alias, "/", config_get(cfg, "submissions_bucket"),
                              "/", basename(file)))
   }
@@ -372,17 +372,17 @@ baselines_destination <- function(cfg) {
 # Where the marker for a written baseline file is kept.
 baseline_marker <- function(cfg, file) {
   bucket_uri(cfg, "forecasts_bucket", "baseline_records", paste0(basename(file), ".done"),
-             scheme = "mc")
+             scheme = "remote")
 }
 
 baseline_written <- function(marker) {
-  length(minioclient::mc_ls(marker)) > 0
+  remote_exists(marker)
 }
 
 # Process a baseline file and write it to the forecasts bucket, unless it was
 # written already.
 write_baseline <- function(cfg, file) {
-  mc_connect(cfg, "main", anonymous = is_dry_run() && read_anonymously_without_key(cfg))
+  remote_connect(cfg, "main", anonymous = is_dry_run() && read_anonymously_without_key(cfg))
   marker <- baseline_marker(cfg, file)
   if (baseline_written(marker)) {
     cli::cli_inform("{.path {basename(file)}} was already written; leaving it.")

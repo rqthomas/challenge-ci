@@ -37,7 +37,7 @@ noaa_store <- function(cfg, product) {
 #' there into the product's folder with [upload_dir()], keeping the folder
 #' layout (`reference_datetime=.../site_id=.../part-0.parquet`). Files already
 #' in the product are replaced only where the same file is written again.
-#' Uploading with mc, rather than letting arrow write to S3, is what every
+#' Uploading with the S3 client, rather than letting arrow write to S3, is what every
 #' other stage does: it works on OSN, and a dry run sends it to `DRY_RUN_DIR`.
 #'
 #' @inheritParams noaa_store
@@ -52,8 +52,8 @@ write_noaa <- function(cfg, product, write) {
   on.exit(unlink(local, recursive = TRUE), add = TRUE)
   write(local)
   if (length(list.files(local, recursive = TRUE)) == 0) return(invisible(FALSE))
-  if (!is_dry_run()) mc_connect(cfg, "noaa")
-  upload_dir(local, bucket_uri(cfg, "noaa_forecast_bucket", product, scheme = "mc"))
+  if (!is_dry_run()) remote_connect(cfg, "noaa")
+  upload_dir(local, bucket_uri(cfg, "noaa_forecast_bucket", product, scheme = "remote"))
   invisible(TRUE)
 }
 

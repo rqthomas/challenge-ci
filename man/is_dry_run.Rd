@@ -16,7 +16,7 @@ is_verbose()
 output_uri(uri)
 }
 \arguments{
-\item{uri}{Destination: an \verb{s3://} URI or a minio client path
+\item{uri}{Destination: an \verb{s3://} URI or a remote path
 (\code{alias/bucket/...}).}
 }
 \value{

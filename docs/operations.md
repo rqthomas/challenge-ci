@@ -139,17 +139,28 @@ registration workflow; the trigger workflows request the permissions they need.
 For local runs, the same names go in `.Renviron` at the challenge repository's
 root, which R reads at startup. `.Renviron` is never committed.
 
-## The MinIO client
+## The S3 client
 
-Uploads and most listings go through the MinIO client, `mc`. MinIO has withdrawn
-the download that `minioclient::install_mc()` uses (it answers HTTP 410 Gone), so
-the engine installs the pinned release from GitHub itself: `ensure_mc()` does it
-when a stage or script starts (Linux and macOS, Intel or ARM), and the workflows
-also run `.github/actions/install-mc` first. Both check the download against a
-SHA-256. To move to a newer `mc`, change `mc_release` and the checksums in
-`R/mc.R` and the defaults in `.github/actions/install-mc/action.yml` together; a
-test fails if they differ. In your own scripts call `challengeci::ensure_mc()`,
-not `minioclient::install_mc()`.
+Listings, downloads, uploads, moves and deletes of small objects and folders go
+through [paws.storage](https://github.com/paws-r/paws), an R package: nothing
+is downloaded at run time and no program has to be installed. (Large datasets are
+read with duckdb and arrow, which do not use it.) `remote_connect()` makes a client
+for a store from its config (endpoint, region, key) and files it under an alias;
+the helpers `remote_files()`, `remote_exists()`, `remote_download()`,
+`upload_file()`, `upload_dir()`, `move_remote()` and `remove_remote()` take remote
+paths, `<alias>/<bucket>/<key>`, which `bucket_uri(scheme = "remote")` builds.
+
+- Files over 64 MB are uploaded in parts of 32 MiB, and a failed upload is
+  aborted so no parts are left behind (options `challengeci.multipart_threshold` and
+  `challengeci.part_size`, in bytes). `upload_dir()` skips files already there with
+  the same size and MD5 and, on Linux, sends four at a time
+  (`challengeci.upload_workers`).
+- paws signs requests for the store's region and addresses buckets path-style, so a
+  custom endpoint such as Backblaze B2, OSN or Ceph works. It sends a checksum only
+  where a request needs one, because some S3-compatible stores reject the extra
+  checksum paws would otherwise add to every upload.
+- A move is a server-side copy then a delete, so it only works within one store and
+  for objects under 5 GB.
 
 ## Common tasks
 
@@ -189,7 +200,7 @@ observation but no score yet. Rows already scored are never scored again.
 - **Rescore a model or variable** (after its observations were corrected):
   its existing scores must go first, because scored rows are skipped. Copy the
   model's folder under `<scores_bucket>/bundled-parquet/` aside (e.g. with
-  `mc cp --recursive`), delete it, then run *scoring* with *since* early enough
+  `rclone copy` or the AWS CLI), delete it, then run *scoring* with *since* early enough
   to cover the model's forecasts.
 
 ## Recovering from failed bundling
@@ -224,8 +235,9 @@ bucket's own policy lets anyone read and delete, so processing lists the
 bucket with the key and reads and deletes anonymously. Deleting may still
 fail, so processing also keeps its own record of every submission handled
 (`processed_submissions`, on the main store) and skips those files. The two
-minio client aliases are at the top of the engine's `R/submissions.R`; once
-NRP restores the key's permissions, drop the anonymous one there.
+two remote connections (aliases) are named at the top of the engine's
+`R/submissions.R`; once NRP restores the key's permissions, drop the anonymous one
+there.
 
 ## Submissions from GitHub repositories
 

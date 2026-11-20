@@ -12,15 +12,21 @@ upload_dir(from, to)
 \arguments{
 \item{from}{Local file or folder.}
 
-\item{to}{Minio client destination (\code{alias/bucket/...}), e.g. from
-\code{\link[=bucket_uri]{bucket_uri()}} with \code{scheme = "mc"}.}
+\item{to}{Remote destination (\code{alias/bucket/...}), e.g. from
+\code{\link[=bucket_uri]{bucket_uri()}} with \code{scheme = "remote"}.}
 }
 \value{
 The destination actually written, invisibly.
 }
 \description{
-\code{upload_file()} copies one file with \verb{mc cp}. \code{upload_dir()} copies a whole
-folder with \verb{mc mirror}, replacing remote files of the same name and leaving
-other remote files alone. In a dry run (see \code{\link[=is_dry_run]{is_dry_run()}}) both copy to
-\code{\link[=output_uri]{output_uri()}} instead.
+\code{upload_file()} uploads one file. \code{upload_dir()} uploads a whole folder,
+replacing remote files of the same name, leaving other remote files alone and
+skipping files that are already there unchanged. In a dry run (see
+\code{\link[=is_dry_run]{is_dry_run()}}) both copy to \code{\link[=output_uri]{output_uri()}} instead.
+}
+\details{
+A file over 64 MB is uploaded in parts of 32 MiB (the
+\code{challengeci.multipart_threshold} and \code{challengeci.part_size} options, in
+bytes; S3 does not take parts under 5 MiB). \code{upload_dir()} sends several files
+at a time on Linux (the \code{challengeci.upload_workers} option, default 4).
 }

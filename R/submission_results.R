@@ -61,7 +61,7 @@ write_submission_results <- function(cfg, results) {
   for (name in unique(results$results_name)) {
     remote <- bucket_uri(cfg, "forecasts_bucket", "submission_results",
                          paste0(gsub("[^A-Za-z0-9_.-]", "_", name), ".csv"),
-                         scheme = "mc")
+                         scheme = "remote")
     tryCatch({
       new <- results[results$results_name == name, published_columns]
       combined <- dplyr::bind_rows(read_published_results(remote), new) |>
@@ -82,12 +82,12 @@ write_submission_results <- function(cfg, results) {
 
 # The results already published at `remote`, or none.
 read_published_results <- function(remote) {
-  if (length(minioclient::mc_ls(remote)) == 0) {
+  if (!remote_exists(remote)) {
     empty <- rep(list(character()), length(published_columns))
     return(tibble::as_tibble(rlang::set_names(empty, published_columns)))
   }
   local <- tempfile(fileext = ".csv")
   on.exit(unlink(local))
-  minioclient::mc_cp(remote, shQuote(local))
+  remote_download(remote, local)
   readr::read_csv(local, col_types = readr::cols(.default = "c"), progress = FALSE)
 }
