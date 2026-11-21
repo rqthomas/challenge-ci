@@ -37,7 +37,7 @@ challenge sets its own. "Large" means the self-hosted runner named by
 | `baselines.yaml` (`_baselines.yaml`) | 20:00 daily; 01:00 Sunday weekly | GitHub | `run_stage() baselines <schedule> <group>` per group | `baselines-daily` / `baselines-weekly` when all succeed |
 | `drivers_stage1_2.yaml` (`_drivers_stage1_2.yaml`) | 05:00 | GitHub | `run_stage() drivers-stage1-2` | `drivers-stage1-2` |
 | `drivers_stage3.yaml` (`_drivers_stage3.yaml`) | 23:00 | large | `run_stage() drivers-stage3 [rebuild]` | `drivers-stage3` |
-| `catalog.yaml` (`_catalog.yaml`) | 23:00 | GitHub | `run_stage() catalog`, then commits to `catalog_config$catalog_repo` | `catalog` |
+| `catalog.yaml` (`_catalog.yaml`) | 23:00 | GitHub | `run_stage() catalog`, then commits to `catalog_config$catalog_repo` (on `catalog_config$catalog_branch`) | `catalog` |
 | `dashboard.yaml` (`_dashboard.yaml`) | 08:00 | GitHub | `run_stage() dashboard`, publishes to the challenge's `gh-pages` | `dashboard` |
 | `docker.yaml` (`_docker.yaml`) | Sunday 00:00 | GitHub | builds `challenge/Dockerfile` as `ci$docker_image` | `docker` |
 | `check.yaml` (`_check.yaml`) | pull requests and pushes | GitHub | `run_stage() check` | — |
@@ -124,7 +124,7 @@ reusable workflows map secrets onto them.
 | `EFI_NRP_KEY`, `EFI_NRP_SECRET` | same | scoring, targets | the scratch store (`scratch`), unless `credentials.scratch` points at the main key |
 | `AWS_ACCESS_KEY_SUBMISSIONS`, `AWS_SECRET_ACCESS_KEY_SUBMISSIONS` | same | submissions, baselines | the submissions bucket (only when it is used): listing and moving files, uploading baseline forecasts |
 | `NEON_TOKEN` | same | targets | NEON API downloads (NEON-based challenges) |
-| `CATALOG_TOKEN` | `EXTERNAL_GH_PAT` | catalog | pushing to the catalog repository |
+| `CATALOG_TOKEN` | same | catalog | pushing to a catalog repository of its own (not needed when the catalog is a branch of the challenge repository, `catalog_config$catalog_branch`: the built-in token is used) |
 | `WORKFLOW_TOKEN` | — | update-engine | opening the pull request that changes the workflow files (see Upgrading the engine) |
 | `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | — | challenge-image | pushing the challenge image to Docker Hub (not needed for `ghcr.io`) |
 | `PAT` | build secret `github_pat` | challenge-image | GitHub installs during the build, without rate limits (optional) |

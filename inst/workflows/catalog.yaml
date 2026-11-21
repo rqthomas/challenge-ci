@@ -12,6 +12,11 @@ on:
         type: boolean
         default: false
 
+# Contents: write lets the built-in token push the catalog to a branch of this
+# repository (catalog_config$catalog_branch).
+permissions:
+  contents: write
+
 concurrency:
   group: catalog
   cancel-in-progress: false

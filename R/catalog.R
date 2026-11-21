@@ -485,6 +485,25 @@ build_variable_collection <- function(var, group, ctx) {
 
 # The STAC item for one model's forecasts (or summaries, or scores) of one
 # variable.
+# The repository and branch the catalog is committed to: `catalog_repo`
+# (default: this repository) and `catalog_branch` (default: `main`, the default
+# branch of a repository of its own). A catalog kept in a branch of the
+# challenge's own repository sets `catalog_branch`, e.g. `catalog`.
+catalog_repo <- function(cfg) {
+  config_get(cfg, "catalog_config", "catalog_repo", default = cfg$github_repo)
+}
+
+catalog_branch <- function(cfg) {
+  config_get(cfg, "catalog_config", "catalog_branch", default = "main")
+}
+
+# Where a file of the catalog (a path inside the catalog repository) can be
+# fetched as it is: GitHub's raw address, which STAC Browser can read.
+catalog_raw_url <- function(cfg, path) {
+  paste("https://raw.githubusercontent.com", catalog_repo(cfg), catalog_branch(cfg), path,
+        sep = "/")
+}
+
 model_item <- function(m, dates, var, group, partition, ctx) {
   cfg <- ctx$cfg
   cc <- cfg$catalog_config
@@ -495,9 +514,8 @@ model_item <- function(m, dates, var, group, partition, ctx) {
     dplyr::pull("site_id")
   site_rows <- ctx$sites[match(sites, ctx$sites$site_id), ]
   code_url <- if (is.na(reg$code_url)) cfg$challenge_url else reg$code_url
-  catalog_repo <- config_get(cfg, "catalog_config", "catalog_repo", default = cfg$github_repo)
   item_path <- paste(ctx$spec$dir, group, var$catalog_name, "models", paste0(m, ".json"), sep = "/")
-  raw_url <- paste0("https://raw.githubusercontent.com/", catalog_repo, "/main/", item_path)
+  raw_url <- catalog_raw_url(cfg, item_path)
   metadata_url <- bucket_uri(cfg, "model_metadata_bucket", paste0(m, ".json"), scheme = "https")
   data_uri <- public_s3_uri(cfg, ctx$data_path[1], ctx$data_path[2], partition,
                             paste0("model_id=", m))

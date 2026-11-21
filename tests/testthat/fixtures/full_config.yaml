@@ -273,6 +273,7 @@ catalog_config:
   site_metadata_url: 'https://raw.githubusercontent.com/eco4cast/neon4cast-ci/main/neon4cast_field_site_metadata.csv'
   # Repository the catalog is committed to; links to raw JSON point here.
   catalog_repo: eco4cast/neon4cast-catalog
+  catalog_branch: main
   # Catalog that lists this one as a child.
   parent_catalog_url: 'https://raw.githubusercontent.com/eco4cast/challenge-catalogs/main/catalog.json'
   # Descriptions of the site metadata columns, shown in the sites collection.

@@ -75,9 +75,11 @@ dashboard, catalog and participants read them without credentials. The
 submissions bucket (if you use one) must let participants upload. The scratch bucket is private
 and holds temporary files while scoring.
 
-**Backblaze B2.** The S3 API works with the engine: use the endpoint
+**Backblaze B2.** The S3 API works with the engine, and its free tier (10 GB) is enough
+for a small challenge. The challenge template's README has a step-by-step guide to a
+free **private** bucket, with its keys and lifecycle setting. Use the endpoint
 `s3.<region>.backblazeb2.com` (the region is read from it), name the bucket
-in the `*_bucket` settings, and make it public for downloads. B2 does not, as far
+in the `*_bucket` settings, and make it public for downloads if you want a public one. B2 does not, as far
 as we know, answer anonymous *list* requests, so either set `public_read: false`
 (the engine then reads with the key; participants cannot read the folders
 anonymously) or check
@@ -105,7 +107,7 @@ password manager). Tokens expire: note the date, and renew them before it.
 | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | **always** (targets, baselines, submissions, bundling, scoring, catalog, drivers; the dashboard only with `public_read: false`) | The key ID and secret of an S3 key that can read and write the **main store** (the buckets named in the config). Whatever S3 store `endpoint` names, this is its key. See *The store key*. |
 | `EFI_NRP_KEY`, `EFI_NRP_SECRET` | scoring and targets, **unless** the scratch space uses the main key | The key for the `scratch` store. If scratch is in the main bucket (as in the template) set `credentials: scratch: {key_env: S3_ACCESS_KEY_ID, secret_env: S3_SECRET_ACCESS_KEY}` in the config and skip these two. |
 | `AWS_ACCESS_KEY_SUBMISSIONS`, `AWS_SECRET_ACCESS_KEY_SUBMISSIONS` | only if participants upload to a **submissions bucket** (`submissions$use_bucket` not `false`) or baselines go through it (`baselines_destination: submissions_bucket`) | A key for the `submissions_endpoint` store. A challenge that takes submissions from GitHub repositories and writes baselines straight to the forecasts bucket does not need it. |
-| `CATALOG_TOKEN` | only for the `catalog` workflow | A GitHub token that can push to the catalog repository. See *GitHub tokens*. |
+| `CATALOG_TOKEN` | only if the catalog is in a **repository of its own** | A GitHub token that can push to the catalog repository. A catalog kept in a branch of this repository (`catalog_config$catalog_branch`) is pushed with the built-in token. See *GitHub tokens*. |
 | `WORKFLOW_TOKEN` | only for the `update-engine` workflow | A GitHub token that can change workflow files and open pull requests in this repository. See *GitHub tokens*. |
 | `NEON_TOKEN` | NEON-based targets scripts | A NEON API token: sign in at [data.neonscience.org](https://data.neonscience.org), open *Get an API token* in your account, and copy it. |
 | `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | only if your own image (`challenge/Dockerfile`) is pushed to **Docker Hub** | Your Docker Hub user name and an access token (Docker Hub → Account settings → Security → New access token, with write access). An image on `ghcr.io` needs neither. |
@@ -156,7 +158,7 @@ checks). To create one:
 
 | Secret | Repository access | Permissions |
 |---|---|---|
-| `CATALOG_TOKEN` | the **catalog** repository only | Contents |
+| `CATALOG_TOKEN` | the **catalog** repository only (only if it is a repository of its own) | Contents |
 | `WORKFLOW_TOKEN` | the **challenge** repository only | Contents, Pull requests, Workflows |
 
 ### No token needed, but check
@@ -254,8 +256,9 @@ In `challenge/dashboard/` (see `?challengeci::render_dashboard`):
 - any extra pages (`*.qmd`), listed in `dashboard$extra_pages`.
 
 Any file you leave out falls back to the engine's generic default. Preview the
-site with `Rscript -e 'challengeci::run_stage()' dashboard site` and open
-`site/index.html`.
+site with `Rscript -e 'challengeci::run_stage()' dashboard site`, serve the folder
+(`python3 -m http.server -d site`; the pages load their data with `fetch`, which
+browsers block for files opened directly) and open <http://localhost:8000>.
 
 ## 9. Set up publishing
 
@@ -263,16 +266,36 @@ site with `Rscript -e 'challengeci::run_stage()' dashboard site` and open
 
 The `catalog` workflow builds the challenge's STAC catalog (browsable at
 [radiantearth.github.io/stac-browser](https://radiantearth.github.io/stac-browser))
-and commits it to a **separate repository**, which must exist before the first
-run, even for a dry run (the workflow clones it first). You can skip the catalog
+and commits it to a **branch of the challenge repository** or to a **repository of
+its own** (below). A repository of its own must exist before the first run, even for
+a dry run, since the workflow clones it first; a branch is created by the first run.
+You can skip the catalog
 altogether by never running that workflow: the forecasts, scores and dashboard do
 not depend on it, but the dashboard's catalog page then links to nothing, and the
 model metadata records (`<model_metadata_bucket>/<model_id>.json`), which the
 same stage writes from the registrations, are not updated. (`run_stage()` with
-`catalog metadata` writes only those, and needs no catalog repository.)
+`catalog metadata` writes only those, and needs no catalog repository or branch.)
 
-1. **Create the repository**, public, *with a README* so that it has a `main`
-   branch (the catalog's links assume `main`):
+There are two ways to keep it. Either way the repository must be **public**, since
+the catalog's links and STAC Browser read its files from `raw.githubusercontent.com`.
+
+**A branch of the challenge repository** (the template does this; best for a small
+catalog). Nothing to create and no token to make:
+
+1. Leave `catalog_config$catalog_repo` out (it defaults to `github_repo`) and set
+   `catalog_config$catalog_branch: catalog`. The first run creates the branch, empty
+   apart from the catalog, so it never mixes with your code. A repository made from
+   the template does not copy it.
+2. Keep `permissions: contents: write` in `.github/workflows/catalog.yaml`: the
+   workflow pushes with the built-in token.
+3. `catalog_config$catalog_path` is the folder name the workflow clones the branch into
+   (the `*_path` settings below it start with the same name).
+
+**A repository of its own** (best for a large catalog: a branch's history is part of
+every clone of the code repository, and a catalog committed daily grows quickly).
+
+1. **Create the repository**, public, *with a README* so that it has a `main` branch
+   (without `catalog_branch` the catalog's links assume `main`):
    ```sh
    gh repo create <owner>/<name>-catalog --public --add-readme \
      --description "STAC catalog for <challenge name>"
@@ -284,7 +307,6 @@ same stage writes from the registrations, are not updated. (`run_stage()` with
 3. **Give the workflow a token to push to it:** create `CATALOG_TOKEN` as described
    in [step 5](#github-tokens) (a fine-grained token for the catalog repository,
    with *Contents: Read and write*) and store it in the **challenge** repository.
-   The workflow reads it as `EXTERNAL_GH_PAT`.
 
 ### The dashboard (GitHub Pages)
 

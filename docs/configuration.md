@@ -231,7 +231,8 @@ These settings drive the STAC catalog built by `run_stage("catalog")`
 |---|---|
 | `catalog_title` | Title of the root catalog. |
 | `catalog_path` | Folder the catalog is written to, next to this repository (`../<catalog_path>`). The catalog workflow clones `catalog_repo` there. |
-| `catalog_repo` | `owner/repo` of the catalog repository. The workflow commits the catalog there, and each model item links to its raw JSON in it. Defaults to `github_repo`. |
+| `catalog_repo` | `owner/repo` the catalog is committed to. Each model item links to its raw JSON there. Defaults to `github_repo`. A catalog of its own repository needs `CATALOG_TOKEN`; see `catalog_branch`. |
+| `catalog_branch` | Branch of `catalog_repo` the catalog is committed to. Default: `main`, which suits a repository of its own. To keep the catalog in the challenge's own repository, leave out `catalog_repo` (or set it to `github_repo`) and set a branch of its own, such as `catalog`: the first run creates it empty, apart from the code, and the built-in token can push it (no `CATALOG_TOKEN`). A small catalog suits a branch; a large one, committed daily, bloats every clone of the code repository, so give it a repository. The validation warns if the catalog would land on the code's default branch. |
 | `parent_catalog_url` | Catalog that lists this one as a child. Optional; without it the root catalog has no parent link. |
 | `site_columns_file` | CSV (`column`, `description`) describing the site metadata columns, for the sites collection. Optional. |
 | `registration_columns` | Optional. Overrides the registration form questions the catalog reads, as `short_name: "Question text"`; see `?registration_columns` for the short names and defaults. |

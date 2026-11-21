@@ -29,13 +29,16 @@ Errors (the CI cannot run correctly):
 \item a group's \code{variable}, \code{duration} and \code{max_horizon} arrays differ in length;
 \item a duration is not an ISO 8601 duration such as \code{P1D}, \code{P1W} or \code{PT30M};
 \item a \code{max_horizon} is not a positive number;
-\item the same variable and duration appear twice, so its horizon is ambiguous.
+\item the same variable and duration appear twice, so its horizon is ambiguous;
+\item \code{catalog_config$catalog_branch} is not a branch name.
 }
 
 Warnings (probably a mistake, but the CI still runs):
 \itemize{
 \item a variable has no \code{group_vars} entry, or the \code{group_vars} entry gives a
 different \code{duration} or \code{max_horizon} from the group's arrays;
-\item a \code{group_vars} entry names a variable that is not in the group.
+\item a \code{group_vars} entry names a variable that is not in the group;
+\item the catalog would be committed to this repository's default branch
+(\code{catalog_repo} is this repository and there is no \code{catalog_branch}).
 }
 }

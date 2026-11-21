@@ -1,0 +1,28 @@
+name: Clone the catalog repository
+description: >
+  Clones the repository (and branch) the catalog is committed to, into a folder.
+  A branch that does not exist yet is started empty. Used by the catalog
+  workflow, which writes the catalog there.
+
+inputs:
+  repo:
+    description: owner/name of the catalog repository.
+    required: true
+  branch:
+    description: Branch the catalog is kept in. Empty for the default branch.
+    required: false
+    default: ''
+  dir:
+    description: Folder to clone into.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Clone
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        BRANCH: ${{ inputs.branch }}
+        DIR: ${{ inputs.dir }}
+      run: bash "${{ github.action_path }}/clone.sh"

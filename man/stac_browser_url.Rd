@@ -9,8 +9,9 @@ stac_browser_url(cfg, path = "catalog.json")
 \arguments{
 \item{cfg}{Configuration from \code{\link[=read_config]{read_config()}}.}
 
-\item{path}{Path of a JSON file in the catalog repository, e.g.
-\code{"summaries/collection.json"}.}
+\item{path}{Path of a JSON file in the catalog, e.g.
+\code{"summaries/collection.json"}. The catalog is read from
+\code{catalog_config$catalog_repo} and \code{catalog_config$catalog_branch}.}
 }
 \value{
 A URL.

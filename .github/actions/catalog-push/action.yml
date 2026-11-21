@@ -1,0 +1,32 @@
+name: Commit and push the catalog
+description: >
+  Commits what the catalog stage wrote to the clone made by catalog-clone and
+  pushes it to the catalog repository's branch, taking in any push made since the
+  clone. Does nothing if nothing changed.
+
+inputs:
+  repo:
+    description: owner/name of the catalog repository.
+    required: true
+  branch:
+    description: Branch the catalog is kept in. Empty for the clone's current branch.
+    required: false
+    default: ''
+  dir:
+    description: The clone made by catalog-clone.
+    required: true
+  token:
+    description: A token that can push to the catalog repository.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Commit and push
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        BRANCH: ${{ inputs.branch }}
+        DIR: ${{ inputs.dir }}
+        TOKEN: ${{ inputs.token }}
+      run: bash "${{ github.action_path }}/push.sh"

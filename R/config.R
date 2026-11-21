@@ -186,12 +186,15 @@ target_variables <- function(cfg) {
 #' * a group's `variable`, `duration` and `max_horizon` arrays differ in length;
 #' * a duration is not an ISO 8601 duration such as `P1D`, `P1W` or `PT30M`;
 #' * a `max_horizon` is not a positive number;
-#' * the same variable and duration appear twice, so its horizon is ambiguous.
+#' * the same variable and duration appear twice, so its horizon is ambiguous;
+#' * `catalog_config$catalog_branch` is not a branch name.
 #'
 #' Warnings (probably a mistake, but the CI still runs):
 #' * a variable has no `group_vars` entry, or the `group_vars` entry gives a
 #'   different `duration` or `max_horizon` from the group's arrays;
-#' * a `group_vars` entry names a variable that is not in the group.
+#' * a `group_vars` entry names a variable that is not in the group;
+#' * the catalog would be committed to this repository's default branch
+#'   (`catalog_repo` is this repository and there is no `catalog_branch`).
 #'
 #' @inheritParams config_get
 #' @return `config_problems()`: a tibble with columns `severity` (`"error"` or
@@ -246,6 +249,21 @@ config_problems <- function(cfg) {
   if (!rlang::is_string(site_url)) {
     add("error", "catalog_config$site_metadata_url",
         "required (or sites$metadata_url), and must be a single string")
+  }
+
+  branch <- cfg$catalog_config$catalog_branch
+  repo <- cfg$catalog_config$catalog_repo %||% cfg$github_repo
+  if (!is.null(branch) && !(rlang::is_string(branch) && grepl("^[A-Za-z0-9._/-]+$", branch))) {
+    add("error", "catalog_config$catalog_branch",
+        "must be a branch name: letters, digits, dots, hyphens, underscores or slashes")
+  } else if (!is.null(repo) && identical(repo, cfg$github_repo) &&
+               (is.null(branch) || branch %in% c("main", "master"))) {
+    # The catalog is committed to the repository it is written for: the code
+    # branch would be filled with catalog files, and every run would commit to it.
+    add("warning", "catalog_config$catalog_branch",
+        paste0("the catalog is committed to the default branch of this repository (",
+               "catalog_repo is ", repo, "); set catalog_branch (e.g. `catalog`) or a ",
+               "catalog_repo of its own"))
   }
 
   groups <- cfg$target_groups

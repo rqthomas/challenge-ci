@@ -118,6 +118,17 @@ optional and the defaults keep today's behaviour.
   - The Targets page draws each variable's observations at the focal sites in
     the browser, with the same chart as the forecast explorer (from the new
     `targets/<variable>.json` files), and its map zooms to fit the sites.
+  - **The catalog can live in a branch of the challenge repository** instead of a
+    repository of its own: set `catalog_config$catalog_branch` (and leave out
+    `catalog_repo`). The catalog workflow creates the branch empty on its first run
+    and pushes with the built-in token, so there is no catalog repository to create
+    and no `CATALOG_TOKEN`; the trigger workflow needs `permissions: contents:
+    write` (`inst/workflows/catalog.yaml` has it). The item links and the
+    dashboard's STAC Browser link use the branch. Existing challenges change nothing:
+    without `catalog_branch` the catalog is committed to the default branch of
+    `catalog_repo`, as before. A validation warning appears if the catalog would
+    land on the code's default branch. A large, daily-committed catalog still
+    belongs in a repository of its own.
   - New optional keys: `dashboard$tagline`, `key_request_url`, `min_forecasts`,
     `skill_baseline`, `publish_results`.
   - The old Performance and Catalog pages are gone (replaced by Leaderboard,

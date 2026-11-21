@@ -1,9 +1,12 @@
 # Build the challenge's STAC catalog and model metadata, and commit the catalog
-# to its catalog repository (catalog_config$catalog_repo).
+# to its catalog repository (catalog_config$catalog_repo) or to a branch of the
+# challenge's own repository (catalog_config$catalog_branch).
 #
 # Reusable: a challenge repository calls it from a short trigger workflow (see
-# inst/workflows/catalog.yaml in the engine), with `secrets: inherit`. Needs
-# the CATALOG_TOKEN secret: a token that can push to the catalog repository.
+# inst/workflows/catalog.yaml in the engine), with `secrets: inherit` and
+# `permissions: contents: write`. A catalog kept in a branch of the challenge's
+# own repository is pushed with the built-in token. A catalog repository of its
+# own needs the CATALOG_TOKEN secret: a token that can push to it.
 name: catalog
 
 on:
@@ -31,7 +34,6 @@ jobs:
       options: --memory 15120m
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      EXTERNAL_GH_PAT: ${{ secrets.CATALOG_TOKEN }}
       S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
       S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
     steps:
@@ -42,28 +44,38 @@ jobs:
       - uses: eco4cast/challenge-ci/.github/actions/setup-challenge@main
 
       # The catalog is written to ../<catalog_config$catalog_path>, a clone of
-      # catalog_config$catalog_repo.
-      - name: Clone the catalog repository
+      # catalog_config$catalog_repo (default: this repository) on the branch
+      # catalog_config$catalog_branch (default: the repository's default branch).
+      - name: Read the catalog settings
         run: |
-          repo=$(Rscript -e 'cat(yaml::read_yaml("challenge_configuration.yaml")$catalog_config$catalog_repo)')
-          dir=$(Rscript -e 'cat(yaml::read_yaml("challenge_configuration.yaml")$catalog_config$catalog_path)')
-          git clone --depth 1 "https://github.com/${repo}.git" "../${dir}"
-          echo "CATALOG_REPO=${repo}" >> "$GITHUB_ENV"
-          echo "CATALOG_DIR=../${dir}" >> "$GITHUB_ENV"
+          read_setting() {
+            Rscript -e "cat(yaml::read_yaml('challenge_configuration.yaml')\$catalog_config\$$1)"
+          }
+          repo=$(read_setting catalog_repo)
+          echo "CATALOG_REPO=${repo:-$GITHUB_REPOSITORY}" >> "$GITHUB_ENV"
+          echo "CATALOG_BRANCH=$(read_setting catalog_branch)" >> "$GITHUB_ENV"
+          echo "CATALOG_DIR=../$(read_setting catalog_path)" >> "$GITHUB_ENV"
+
+      - name: Clone the catalog repository
+        uses: eco4cast/challenge-ci/.github/actions/catalog-clone@main
+        with:
+          repo: ${{ env.CATALOG_REPO }}
+          branch: ${{ env.CATALOG_BRANCH }}
+          dir: ${{ env.CATALOG_DIR }}
 
       - name: Build catalog and model metadata
         run: Rscript -e 'challengeci::run_stage()' catalog
 
+      # CATALOG_TOKEN is only needed for a catalog repository of its own; a
+      # branch of this repository is pushed with the built-in token.
       - name: Commit and push
         if: ${{ !inputs.dry_run }}
-        run: |
-          cd "$CATALOG_DIR"
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add -A .
-          git commit -m "update catalog" || echo "nothing to commit"
-          git pull --rebase
-          git push "https://${EXTERNAL_GH_PAT}:${EXTERNAL_GH_PAT}@github.com/${CATALOG_REPO}"
+        uses: eco4cast/challenge-ci/.github/actions/catalog-push@main
+        with:
+          repo: ${{ env.CATALOG_REPO }}
+          branch: ${{ env.CATALOG_BRANCH }}
+          dir: ${{ env.CATALOG_DIR }}
+          token: ${{ secrets.CATALOG_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Keep the dry-run output
         if: ${{ inputs.dry_run && !cancelled() }}

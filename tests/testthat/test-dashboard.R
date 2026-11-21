@@ -119,6 +119,24 @@ test_that("stac_browser_url() points at the catalog repository", {
                       "raw.githubusercontent.com/org/cat/main/sites/collection.json"))
 })
 
+test_that("the catalog is linked on the branch it is committed to", {
+  # A catalog branch of the challenge's own repository.
+  cfg <- list(github_repo = "org/challenge", catalog_config = list(catalog_branch = "catalog"))
+  expect_equal(catalog_raw_url(cfg, "forecasts/collection.json"),
+               "https://raw.githubusercontent.com/org/challenge/catalog/forecasts/collection.json")
+  expect_equal(stac_browser_url(cfg),
+               paste0("https://radiantearth.github.io/stac-browser/#/external/",
+                      "raw.githubusercontent.com/org/challenge/catalog/catalog.json"))
+  # A repository of its own keeps its default branch, `main`.
+  own <- list(catalog_config = list(catalog_repo = "org/cat"))
+  expect_equal(catalog_raw_url(own, "catalog.json"),
+               "https://raw.githubusercontent.com/org/cat/main/catalog.json")
+  # Both can be set.
+  both <- list(catalog_config = list(catalog_repo = "org/cat", catalog_branch = "stac"))
+  expect_equal(catalog_raw_url(both, "catalog.json"),
+               "https://raw.githubusercontent.com/org/cat/stac/catalog.json")
+})
+
 test_that("dashboard pages call only exported functions", {
   # Pages run with library(challengeci); internal functions work under
   # pkgload but fail on the installed package.

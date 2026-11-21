@@ -328,14 +328,14 @@ dashboard_sites <- function(cfg) {
 #' Link to a page of the challenge's catalog in the STAC browser
 #'
 #' @inheritParams config_get
-#' @param path Path of a JSON file in the catalog repository, e.g.
-#'   `"summaries/collection.json"`.
+#' @param path Path of a JSON file in the catalog, e.g.
+#'   `"summaries/collection.json"`. The catalog is read from
+#'   `catalog_config$catalog_repo` and `catalog_config$catalog_branch`.
 #' @return A URL.
 #' @export
 stac_browser_url <- function(cfg, path = "catalog.json") {
-  repo <- config_get(cfg, "catalog_config", "catalog_repo", default = cfg$github_repo)
-  paste0("https://radiantearth.github.io/stac-browser/#/external/raw.githubusercontent.com/",
-         repo, "/main/", path)
+  paste0("https://radiantearth.github.io/stac-browser/#/external/",
+         sub("^https://", "", catalog_raw_url(cfg, path)))
 }
 
 #' Build the challenge's dashboard

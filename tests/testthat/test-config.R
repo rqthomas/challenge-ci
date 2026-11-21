@@ -101,3 +101,30 @@ test_that("group_config() lists the valid groups when given a bad one", {
   expect_equal(group_config(cfg, "Birds")$sites_column, "has_birds")
   expect_error(group_config(cfg, "Fish"), "Lakes")
 })
+
+test_that("the catalog branch is checked", {
+  cfg <- test_config()
+  cfg$github_repo <- "org/challenge"
+
+  # The catalog would fill the code's default branch: a warning, not an error.
+  cfg$catalog_config$catalog_repo <- "org/challenge"
+  problems <- config_problems(cfg)
+  expect_equal(problems$severity[problems$key == "catalog_config$catalog_branch"], "warning")
+  # The same when catalog_repo is left out, since it defaults to this repository.
+  cfg$catalog_config$catalog_repo <- NULL
+  expect_true("catalog_config$catalog_branch" %in% config_problems(cfg)$key)
+  cfg$catalog_config$catalog_branch <- "main"
+  expect_true("catalog_config$catalog_branch" %in% config_problems(cfg)$key)
+
+  # A branch of its own, or a repository of its own, is fine.
+  cfg$catalog_config$catalog_branch <- "catalog"
+  expect_false("catalog_config$catalog_branch" %in% config_problems(cfg)$key)
+  cfg$catalog_config$catalog_branch <- NULL
+  cfg$catalog_config$catalog_repo <- "org/challenge-catalog"
+  expect_false("catalog_config$catalog_branch" %in% config_problems(cfg)$key)
+
+  # A branch name must be one.
+  cfg$catalog_config$catalog_branch <- "my catalog"
+  problems <- config_problems(cfg)
+  expect_equal(problems$severity[problems$key == "catalog_config$catalog_branch"], "error")
+})
