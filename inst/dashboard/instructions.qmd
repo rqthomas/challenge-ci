@@ -9,7 +9,8 @@ source("R/setup.R")
 # This page shows its code.
 knitr::opts_chunk$set(echo = TRUE)
 themes <- unique(unlist(purrr::map(cfg$target_groups, "theme")))
-use_github <- !is.null(cfg$submissions$github$registry)
+use_github <- !is.null(cfg$submissions$repos$registry)
+use_bucket <- !isFALSE(cfg$submissions$use_bucket)
 horizons <- range(variables$max_horizon)
 ```
 
@@ -18,10 +19,10 @@ horizons <- range(variables$max_horizon)
 We provide an overview of the steps for submitting with the details below:
 
 1)  Explore the [data](targets.qmd#sec-targets) (e.g., targets) and build your forecast model.
-2)  Register and describe your model `r if (use_github) "in the challenge-model.yaml file in your GitHub repository (described below), or" else "at"` <`r settings$registration_form_url`>. You are not required to register if your forecast submission uses the word "example" in your model_id. Any forecasts with "example" in the model_id will not be used in forecast evaluation analyses. Use `` `r cfg$project_id` `` as the challenge for which you are registering.
+2)  Register and describe your model `r if (use_github) "in the challenge-model.yaml file in your public git repository (described below), or" else "at"` <`r settings$registration_form_url`>. You are not required to register if your forecast submission uses the word "example" in your model_id. Any forecasts with "example" in the model_id will not be used in forecast evaluation analyses. Use `` `r cfg$project_id` `` as the challenge for which you are registering.
 3)  Generate a forecast!
 4)  Write the forecast output to a file that follows our standardized format (described below).
-5)  Submit your forecast `r if (use_github) "by committing the file to your public GitHub repository "`(described below).
+5)  Submit your forecast `r if (use_github) "by committing the file to your public git repository "`(described below).
 6)  Watch your forecast be evaluated as new data are collected.
 
 ## Generating a forecast
@@ -64,7 +65,7 @@ More information about the sites can be found in the [site metadata](`r links$si
 
 The file is a CSV format with the following columns:
 
--   `project_id`: use `` `r cfg$project_id` ``
+-   `project_id` (optional): a label for the challenge a row is for. Leave it out, or use `` `r cfg$project_id` ``, for rows that belong in this challenge. Rows labelled for another challenge are not stored here.
 
 -   `model_id`: the short name of the model defined as the model_id in your registration.
     The model_id should have no spaces.
@@ -75,7 +76,7 @@ The file is a CSV format with the following columns:
     Forecasts submitted with a `%Y-%m-%d` format will be converted to a full datetime assuming UTC mid-night.
 
 -   `reference_datetime`: The start of the forecast; this should be 0 times steps in the future.
-    There should only be one value of `reference_datetime` in the file.
+    A file may hold more than one reference datetime (for example to submit past forecasts), but for each model, reference datetime, variable and duration only the first forecast submitted is kept.
     Format is `%Y-%m-%d %H:%M:%S` with UTC as the time zone.
     Forecasts submitted with a `%Y-%m-%d` format will be converted to a full datetime assuming UTC mid-night.
 
@@ -135,21 +136,27 @@ Ensemble (or sample) forecasts are transformed to a probability distribution fun
 
 ### File name
 
-Save your forecast as a CSV file with the following naming convention:
+Save your forecast as a CSV file (compressed files with the csv.gz extension are also accepted).
 
-`theme_name-year-month-day-model_id.csv`.
-Compressed csv files with the csv.gz extension are also accepted.
+```{r}
+#| output: asis
+#| echo: false
+if (use_github) {
+  cat("A forecast committed to a git repository can have any file name: we identify it by the model_id and reference_datetime columns inside it, so one file can hold several variables and be used for several challenges.\n\n")
+}
+if (use_bucket) {
+  cat(if (use_github) "A forecast uploaded to the submissions bucket is named" else "Name the file",
+      " with the convention `theme_name-year-month-day-model_id.csv`.\n\n",
+      "The `theme_name` options are: ", toString(themes), ". The year, month, and day are the year, month, and day the reference_datetime (horizon = 0). For example, if a forecast starts today and tomorrow is the first forecasted day, horizon = 0 would be today and used in the file name.\n\n", sep = "")
+}
+```
 
-The `theme_name` options are: `r toString(themes)`.
-
-The year, month, and day are the year, month, and day the reference_datetime (horizon = 0).
-For example, if a forecast starts today and tomorrow is the first forecasted day, horizon = 0 would be today and used in the file name.
 `model_id` is the id for the model name that you specified in the model registration (model_id has no spaces in it).
 
 ### `r if (use_github) "Submitting a forecast" else "Uploading forecast"`
 
-`r if (use_github) "New forecast files can be added to your GitHub repository at any time." else "Individual forecast files can be uploaded at any time."`
-The csv file can only contain one unique `model_id` and one unique `project_id`.
+`r if (use_github) "New forecast files can be added to your git repository at any time." else "Individual forecast files can be uploaded at any time."`
+The csv file can only contain one unique `model_id`. One file can hold several variables, and the same file can be used for several challenges: each keeps only the rows with its own variables, durations and sites.
 
 {{< include _content/instructions-submit.qmd >}}
 

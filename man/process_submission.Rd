@@ -4,7 +4,13 @@
 \alias{process_submission}
 \title{Process one downloaded submission}
 \usage{
-process_submission(path, cfg, out_dir, pub_datetime = Sys.time())
+process_submission(
+  path,
+  cfg,
+  out_dir,
+  pub_datetime = Sys.time(),
+  context = list()
+)
 }
 \arguments{
 \item{path}{Local path of the downloaded file.}
@@ -14,16 +20,35 @@ process_submission(path, cfg, out_dir, pub_datetime = Sys.time())
 \item{out_dir}{Local folder for the output.}
 
 \item{pub_datetime}{Publication time stamped on the forecast.}
+
+\item{context}{A list, see above.}
 }
 \value{
 A list with \code{status} and \code{reason}, and \code{warnings} (the validation
-warnings, joined) when the file was read. \code{status} is \code{"processed"}, or
+warnings, joined), \code{model_id}, \code{rows_kept}, \code{rows_dropped} and \code{units} (the
+units written) when the file was read. \code{status} is \code{"processed"}, or
 \code{"invalid"} (failed validation) or \code{"skipped"} (a file name, type or date
-that is not processed). Errors are raised, not returned, so a failure can
-be retried on the next run.
+that is not processed, or nothing in the file to store). Errors are raised,
+not returned, so a failure can be retried on the next run.
 }
 \description{
-Checks the file name, then reads, validates and standardises the forecast.
-For a valid forecast, writes parquet and summaries under \code{out_dir} (in
-\verb{parquet/} and \verb{summaries/}) ready to upload.
+Checks the file, then reads, validates, filters to this challenge's rows and
+standardises the forecast. For a valid forecast with rows left, writes parquet
+and summaries under \code{out_dir} (in \verb{parquet/} and \verb{summaries/}) ready to
+upload.
+}
+\details{
+\code{context} says where the file came from:
+\itemize{
+\item \code{route}: \code{"bucket"} (the file name must be \verb{<theme>-<date>-<model_id>}, and
+a \code{model_id} column must agree with it) or \code{"repo"} (the name is free; the
+forecast is identified by its columns);
+\item \code{name}: the file's name or key (default: the file name of \code{path});
+\item \code{allowed}: the model ids the file may hold (default: any);
+\item \code{legacy}: accept the old format, see \code{\link[=validate_forecast]{validate_forecast()}};
+\item \code{max_bytes}: the largest file accepted;
+\item \code{rules}: from \code{\link[=submission_rules]{submission_rules()}} (default: read from \code{cfg});
+\item \code{units}: the stored units, see \code{\link[=read_units]{read_units()}}; rows of a unit already
+stored are dropped (default: no check).
+}
 }

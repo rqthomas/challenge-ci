@@ -23,17 +23,22 @@ accepted and why not. It has one row per outcome:
 \details{
 \itemize{
 \item \code{model_id}, \code{file}: the model and the file's path in its source.
-\item \code{source}: \code{bucket}, or \verb{github:<owner>/<repo>}.
-\item \code{sha}: the file's git blob SHA (GitHub) or MD5 (bucket).
+\item \code{source}: \code{bucket}, or the repository the file came from, as
+\verb{<host>/<owner>/<name>} (for example \code{github.com/alice/forecasts}).
+\item \code{sha}: the file's git blob SHA (repository) or MD5 (bucket).
 \item \code{first_seen}: when the CI first saw this outcome (UTC). For a processed
 file this is its publication time.
 \item \code{status}: \code{processed}, \code{invalid}, \code{skipped}, \code{unreadable} or \code{failed}; for
 a repository, \code{registered} or \code{registration_invalid}.
-\item \code{reason}, \code{warnings}: why, and any non-fatal problems.
+\item \code{reason}, \code{warnings}: why, and any non-fatal problems, including rows
+dropped because they are not this challenge's.
+\item \code{rows_kept}, \code{rows_dropped}: how many rows of the file were stored and not
+(empty for a file that was not read).
 }
 
 A repository whose \code{challenge-model.yaml} cannot be read is reported under
-\verb{github_<repo id>.csv}, since it has no model id yet. The same outcome is
+\verb{repo_<host>_<owner>_<name>.csv}, since it has no model id yet. So is a file in
+a folder shared by several models whose model could not be read. The same outcome is
 never written twice (same file, source, SHA and status), so a file that is
 skipped on every run appears once; a retry after a failure that ends the
 same way is not repeated either. Each file keeps the most recent

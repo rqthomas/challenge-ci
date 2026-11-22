@@ -240,20 +240,41 @@ two remote connections (aliases) are named at the top of the engine's
 `R/submissions.R`; once NRP restores the key's permissions, drop the anonymous one
 there.
 
-## Submissions from GitHub repositories
+## Submissions from git repositories
 
 Optional, and used together with the submissions bucket: the `submissions`
 stage reads both and keeps one processed-submissions record. It is on when the
-config sets `submissions$github$registry`; set `submissions$use_bucket: false`
-to read only GitHub. Nothing is needed from contributors but a public
-repository: the CI never holds a credential for them, and a model id can only
-be submitted from the repository registered for it.
+config sets `submissions$repos$registry` (the older name `submissions$github` is
+still read); set `submissions$use_bucket: false` to read only repositories.
+Nothing is needed from contributors but a public repository: the CI never holds
+a credential for them, and a model id can only be submitted for the repository
+registered for it.
+
+**Every model has a repository.** It holds `challenge-model.yaml`, which says who
+the model is and describes it, whichever way its forecasts are submitted. The
+registry (a CSV in the challenge repository) says where the *forecasts* go, in
+its `location` column:
+
+| `location` | forecasts come from | the repository is read for |
+|---|---|---|
+| `repo` (default) | the repository's forecast folder | model description and forecasts |
+| `bucket` | the submissions bucket, files named `<theme>-<YYYY-MM-DD>-<model_id>.csv[.gz]` | model description only |
+
+**Any git host.** The repository can be on GitHub, GitLab, Bitbucket, Codeberg or
+any server on `submissions$repos$allowed_hosts`. Each repository is read with
+plain git: an anonymous, shallow clone that fetches the file list and no files,
+then each new file by its SHA (tested on all four hosts above). In the registry,
+`owner/name` means GitHub; any other host is written as
+`https://gitlab.com/group/name`. A private repository cannot be cloned
+anonymously and is reported as unreachable. Two consequences of using plain git:
+a file's size is only known once it is fetched, so `max_file_mb` rejects a
+too-large file after downloading it; and a repository is identified by its
+address, so a renamed repository needs its registry row updated (the first-wins
+rule below stops forecasts being stored twice meanwhile).
 
 **What a contributor does**
 
-1. Keep forecasts in a public repository, in a folder such as `forecasts/`,
-   named `<theme>-<YYYY-MM-DD>-<model_id>.csv` (or `.csv.gz`) as for the bucket.
-2. Add `challenge-model.yaml` at the repository root. It names the challenge and
+1. Add `challenge-model.yaml` at the repository root. It names the challenge and
    its models, and carries the model metadata that the registration form asks
    for:
 
@@ -264,7 +285,7 @@ be submitted from the repository registered for it.
        path: forecasts/            # optional, this is the default
        long_name: My lake model
        description: A process model of lake temperature
-       code_url: https://github.com/alice/forecasts
+       code_url: https://gitlab.com/alice/forecasts
        model_type: process-based
        dynamic: true
        ic_uncertainty: true
@@ -275,23 +296,69 @@ be submitted from the repository registered for it.
    the form (`true` and `false`, or `yes` and `no`, mean the form's "Yes" and
    "No"). Leave a question out to leave it unanswered. A repository for several
    challenges lists one block per challenge, as a YAML list.
+2. Send forecasts. With `location: repo`, commit them to the default branch in
+   the model's `path` as `.csv` or `.csv.gz` files. **File names are free**: a
+   forecast is identified by the `model_id` and `reference_datetime` columns in
+   it, so one file can hold several variables, and one file can serve several
+   challenges. With `location: bucket`, upload to the submissions bucket named
+   `<theme>-<YYYY-MM-DD>-<model_id>.csv[.gz]` (the `model_id` column, if present,
+   must agree with the name).
 3. Register the repository, by either route:
    - **an issue** (optional, set up below): open the challenge repository's
-     "Register a forecast repository" form and give the repository's address. A
-     bot checks it, adds it to the registry, replies and closes the issue;
+     "Register a forecast repository" form, give the repository's address and say
+     where the forecasts go. A bot checks it, adds it to the registry, replies
+     and closes the issue;
    - **by hand**: ask the operator to add a row to the registry.
+
+**What a forecast file must contain.** `model_id`, `reference_datetime`,
+`datetime`, `site_id`, `variable`, `duration`, `family`, `parameter` and
+`prediction`. `project_id` is an optional label: a row labelled for another
+challenge is dropped here, and an unlabelled row is kept. (The label is the way
+to send different data under the same site id to two challenges.) Each challenge
+keeps only the rows that belong to it: a row is kept when its variable and
+duration are forecast by a target group and its site is one of that group's
+sites. The rest are dropped, counted in the published results (`rows_kept`,
+`rows_dropped`), and a file with nothing left is `skipped` with the reason.
+Rows before the reference date or beyond a variable's `max_horizon` are dropped
+as before.
+
+**First wins, by unit.** A unit is a (model, reference date, variable, duration).
+When a file holds a unit that is already stored, those rows are dropped and the
+rest of the file is stored (a file whose units are all stored is `skipped`).
+The units already stored are kept in `<processed_submissions>_units.csv` next to
+the processed record, read once per run; `rebuild_unit_record()` rebuilds it
+from the stored summaries if it is lost (it writes a local file for you to
+upload).
 
 **Model metadata.** `challenge-model.yaml` is also where the model metadata
 comes from: the `catalog` stage's model metadata records are built from the
-registration form's rows *and* the files in the registered repositories. For a
-model in both, the file's answers win and the form fills any question the file
-leaves out; a model only in a file needs no form, so the registration sheet
-(`model_metadata_gsheet`) may be left out of the config altogether. Edits to the
-file reach the catalog at its next run.
+registration form's rows *and* the files in the registered repositories, for both
+locations. For a model in both, the file's answers win and the form fills any
+question the file leaves out; a model only in a file needs no form, so the
+registration sheet (`model_metadata_gsheet`) may be left out of the config
+altogether. Edits to the file reach the catalog at its next run.
 
 **A model id belongs to one repository.** If two registered repositories list the
 same `model_id`, the first one in the registry keeps it (for submissions and for
-metadata) and the other is told so in its published results.
+metadata) and the other is told so in its published results. A bucket file is
+processed only when its model id (from the file name) is claimed by a repository
+with `location: bucket`, or is one of the challenge's own baselines; one claimed
+by a `location: repo` repository is skipped (its forecasts must come from the
+repository). The bucket cannot show who uploaded a file, so a bucket file only
+proves the model id is registered.
+
+**Moving bucket teams to repositories.** Until `submissions$bucket$strict_from`
+(a date you announce), bucket files from models that are not registered are
+still processed, with a note in their published results, and old-format files
+(no `duration`, `model_id`, `reference_datetime` or `site_id` column) are filled
+in from the config and the file name as before. From that date unregistered
+models are skipped and old-format files are invalid. Leave the date out and the
+lenient rules stay. To help teams move: `draft_challenge_model(cfg, model_id)`
+writes a starter `challenge-model.yaml` from the team's registration-form answers,
+and `unregistered_bucket_models(cfg)` lists the published model ids that no
+registered repository claims. A shared bucket (two challenges reading the same
+files) needs `submissions$bucket$delete_processed: false`, or the first challenge
+deletes a file before the second reads it.
 
 **Registering by issue (optional).** Copy
 `inst/issue_forms/register-forecast-repo.yml` to `.github/ISSUE_TEMPLATE/` and
@@ -300,7 +367,8 @@ repository. The workflow runs when an issue with the `register-repo` label (the
 form adds it) is opened or edited, and uses only the Actions token (it needs
 `contents: write` and `issues: write`, which the trigger file grants). It
 registers the repository when
-- it is public and has a valid `challenge-model.yaml` for this challenge, and
+- it can be cloned anonymously, is on an allowed host, and has a valid
+  `challenge-model.yaml` for this challenge, and
 - none of its model ids belong to a repository already in the registry.
 
 Then it commits a row to the registry, replies on the issue and closes it. A
@@ -310,39 +378,40 @@ maintainer has checked that the repository belongs to the model's owner and
 added the row. Any other problem is explained on the issue (label
 `registration-failed`); the contributor edits the issue to try again. The registry
 must be a file in the challenge repository (not a URL) for this to work. The
-issue text is untrusted: it supplies only a repository name, matched against a
-strict pattern, and everything else is read from the repository.
+issue text is untrusted: it supplies only a repository address, matched against a
+strict pattern and the host allowlist, and one of two locations; everything else
+is read from the repository.
 
 **What the operator does**
 
 - To register by hand, add a row to the registry CSV named by
-  `submissions$github$registry` (`repo,repo_id,registered`). Put the repository's
-  numeric id in `repo_id` when it is known
-  (`gh api repos/<owner>/<name> --jq .id`): a repository that is renamed or
-  transferred keeps the same id, and one that is deleted and recreated under the old
-  name does not, so it stops being read until the registry is updated. For a model
-  that already submits through the bucket, check the repository really belongs to
-  that model's owner before listing it: the bucket accepts any `model_id`, so
-  nothing else says who owns an id.
-- Give the jobs a GitHub token: the workflows already pass the Actions token as
-  `GITHUB_PAT`. Without one, the API allows only 60 requests an hour.
+  `submissions$repos$registry` (`repo,location,registered`). For a model that
+  already submits through the bucket, check the repository really belongs to that
+  model's owner before listing it: the bucket accepts any `model_id`, so nothing
+  else says who owns an id.
 - Remove a repository by deleting its row. A contributor can also stop at any
   time by removing `challenge-model.yaml` or making the repository private.
+- The jobs need `git` (it is on GitHub's runners and in the engine's image).
+- To read repositories on another host, add it to `submissions$repos$allowed_hosts`.
 
-**How files are found.** Each run lists every registered repository's default
-branch and compares each file's path with the processed-submissions record (key
-`github/<repo id>/<path>`). File dates are never used. The first version of a
-path wins: editing a file after it was processed has no effect, as for a bucket
-key. A file's publication time is when the CI first processed it, not its commit
-time. Only `.csv` and `.csv.gz` files in a registered folder are read, up to
-`submissions$github$max_file_mb`, and a repository's other files are ignored.
+**How files are found.** Each run clones every registered repository (shallow,
+no files), then compares each file's path with the processed-submissions record
+(key `<host>/<owner>/<name>/<path>`). File dates are never used. The first
+version of a path wins: editing a file after it was processed has no effect, as
+for a bucket key; a file that was skipped because nothing in it belongs to the
+challenge is looked at again if it is edited. A file's publication time is when
+the CI first processed it, not its commit time. Only `.csv` and `.csv.gz` files
+in a registered folder are read, up to `submissions$repos$max_file_mb`, and a
+repository's other files are ignored. A Git LFS pointer is reported as invalid.
+The record is written every few files (and at the end), not after each file.
 
 **What submitters see.** `<forecasts_bucket>/submission_results/<model_id>.csv`
 lists what happened to each file (`processed`, `invalid` with the reason,
-`skipped`, ...), for the bucket and GitHub alike (see
+`skipped`, ...), the rows kept and dropped, and the repository it came from
+(`source`), for the bucket and repositories alike (see
 `?challengeci::write_submission_results`). A repository whose
 `challenge-model.yaml` is missing or invalid is reported in
-`github_<repo id>.csv` until it is fixed.
+`repo_<host>_<owner>_<name>.csv` until it is fixed.
 
 ## A private bucket
 

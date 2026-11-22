@@ -6,10 +6,12 @@
 
 # The columns of one row of results, as run_submissions() builds them.
 results_row <- function(key, model_id, source, sha, status, reason, warnings = "",
-                        file = key, results_name = model_id) {
+                        file = key, results_name = model_id,
+                        rows_kept = NA_integer_, rows_dropped = NA_integer_) {
   tibble::tibble(key = key, model_id = model_id, file = file, source = source,
                  sha = sha, results_name = results_name, status = status,
-                 reason = reason, warnings = warnings)
+                 reason = reason, warnings = warnings,
+                 rows_kept = as.integer(rows_kept), rows_dropped = as.integer(rows_dropped))
 }
 
 empty_results <- function() {
@@ -19,7 +21,7 @@ empty_results <- function() {
 
 # Columns kept in the published files.
 published_columns <- c("model_id", "file", "source", "sha", "first_seen",
-                       "status", "reason", "warnings")
+                       "status", "reason", "warnings", "rows_kept", "rows_dropped")
 
 #' Publish what happened to each submitted file
 #'
@@ -28,16 +30,21 @@ published_columns <- c("model_id", "file", "source", "sha", "first_seen",
 #' accepted and why not. It has one row per outcome:
 #'
 #' * `model_id`, `file`: the model and the file's path in its source.
-#' * `source`: `bucket`, or `github:<owner>/<repo>`.
-#' * `sha`: the file's git blob SHA (GitHub) or MD5 (bucket).
+#' * `source`: `bucket`, or the repository the file came from, as
+#'   `<host>/<owner>/<name>` (for example `github.com/alice/forecasts`).
+#' * `sha`: the file's git blob SHA (repository) or MD5 (bucket).
 #' * `first_seen`: when the CI first saw this outcome (UTC). For a processed
 #'   file this is its publication time.
 #' * `status`: `processed`, `invalid`, `skipped`, `unreadable` or `failed`; for
 #'   a repository, `registered` or `registration_invalid`.
-#' * `reason`, `warnings`: why, and any non-fatal problems.
+#' * `reason`, `warnings`: why, and any non-fatal problems, including rows
+#'   dropped because they are not this challenge's.
+#' * `rows_kept`, `rows_dropped`: how many rows of the file were stored and not
+#'   (empty for a file that was not read).
 #'
 #' A repository whose `challenge-model.yaml` cannot be read is reported under
-#' `github_<repo id>.csv`, since it has no model id yet. The same outcome is
+#' `repo_<host>_<owner>_<name>.csv`, since it has no model id yet. So is a file in
+#' a folder shared by several models whose model could not be read. The same outcome is
 #' never written twice (same file, source, SHA and status), so a file that is
 #' skipped on every run appears once; a retry after a failure that ends the
 #' same way is not repeated either. Each file keeps the most recent
@@ -63,7 +70,8 @@ write_submission_results <- function(cfg, results) {
                          paste0(gsub("[^A-Za-z0-9_.-]", "_", name), ".csv"),
                          scheme = "remote")
     tryCatch({
-      new <- results[results$results_name == name, published_columns]
+      new <- results[results$results_name == name, published_columns] |>
+        dplyr::mutate(dplyr::across(dplyr::everything(), as.character))
       combined <- dplyr::bind_rows(read_published_results(remote), new) |>
         dplyr::distinct(.data$file, .data$source, .data$sha, .data$status,
                         .keep_all = TRUE)
@@ -89,5 +97,8 @@ read_published_results <- function(remote) {
   local <- tempfile(fileext = ".csv")
   on.exit(unlink(local))
   remote_download(remote, local)
-  readr::read_csv(local, col_types = readr::cols(.default = "c"), progress = FALSE)
+  published <- readr::read_csv(local, col_types = readr::cols(.default = "c"), progress = FALSE)
+  # Files written before a column existed.
+  for (col in setdiff(published_columns, names(published))) published[[col]] <- NA_character_
+  published
 }

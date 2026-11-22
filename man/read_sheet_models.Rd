@@ -20,6 +20,6 @@ challenge's rows, drops example models (ids containing \code{example_model_id},
 default \code{"example"}) and keeps one row per model: the most complete one,
 and the earliest of those if several are equally complete (later rows with
 the same id are usually accidental re-registrations). A challenge that reads
-GitHub repositories may leave \code{model_metadata_gsheet} out, and then has no
+git repositories may leave \code{model_metadata_gsheet} out, and then has no
 sheet models.
 }

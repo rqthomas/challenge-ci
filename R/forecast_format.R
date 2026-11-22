@@ -58,37 +58,42 @@ read_submission <- function(path) {
 #' Check a forecast against the challenge's format rules
 #'
 #' The rules match those of `neon4cast::forecast_output_validator()` but take
-#' the variables and durations from `cfg`, and two checks are added (marked
-#' *new*).
+#' the variables and durations from `cfg`, with these differences: the file is
+#' checked for no rows, a prediction column that is not numeric, and (below) the
+#' columns that identify each row.
 #'
 #' Errors (the file is rejected and archived unprocessed):
-#' * no rows (*new*);
+#' * no rows;
 #' * more than one `model_id`, or a `model_id` that is `NA`;
 #' * no `variable` or `prediction` column, or a `prediction` column that is not
-#'   numeric (*new*);
+#'   numeric;
 #' * an `ensemble` column (it must be called `parameter`);
 #' * no `family` or `parameter` column, more than one `family`, or more than 500
 #'   ensemble members;
 #' * no `datetime` column, or one that is not a date or date-time;
-#' * neither a `reference_datetime` nor a `start_time` column.
+#' * no `model_id`, `reference_datetime`, `site_id` or `duration` column. With
+#'   `legacy = TRUE` these are warnings instead, because the old format left
+#'   them out and [fill_legacy_columns()] can fill them in: `model_id` and
+#'   `reference_datetime` from the file name (a `start_time` column counts as
+#'   `reference_datetime`) and `duration` from the variable.
 #'
 #' Warnings (the file is processed, and the problem is logged):
-#' * no `model_id` column (it is taken from the file name);
-#' * variables that are not in the challenge;
-#' * no `site_id`, `duration` or `project_id` column, or a duration the
-#'   challenge does not use;
-#' * a `start_time` column instead of `reference_datetime` (the reference date
-#'   is taken from the file name).
+#' * variables that are not in the challenge, or a duration the challenge does
+#'   not use (those rows are dropped, see [filter_forecast_rows()]).
+#'
+#' A `project_id` column is optional. It labels the challenge a row is for; see
+#' [filter_forecast_rows()].
 #'
 #' Rows beyond a variable's `max_horizon` are not an error here.
 #' [standardize_forecast()] drops them.
 #'
 #' @param fc Forecast from [read_submission()].
 #' @inheritParams config_get
+#' @param legacy Accept the old format (see above).
 #' @return A tibble with columns `severity` (`"error"` or `"warning"`) and
 #'   `message`, with one row per problem. No rows means the file is valid.
 #' @export
-validate_forecast <- function(fc, cfg) {
+validate_forecast <- function(fc, cfg, legacy = FALSE) {
   problems <- character()
   severity <- character()
   add <- function(sev, msg) {
@@ -107,8 +112,10 @@ validate_forecast <- function(fc, cfg) {
     } else if (length(ids) == 1 && is.na(ids)) {
       add("error", "model_id is NA")
     }
-  } else {
+  } else if (legacy) {
     add("warning", "no model_id column; using the model_id in the file name")
+  } else {
+    add("error", "missing the model_id column")
   }
 
   if (!all(c("variable", "prediction") %in% cols)) {
@@ -147,7 +154,7 @@ validate_forecast <- function(fc, cfg) {
   }
 
   if (!"reference_datetime" %in% cols) {
-    if ("start_time" %in% cols) {
+    if (legacy && "start_time" %in% cols) {
       add("warning", paste("start_time should be named reference_datetime;",
                            "using the date in the file name"))
     } else {
@@ -155,12 +162,16 @@ validate_forecast <- function(fc, cfg) {
     }
   }
 
-  if (!"site_id" %in% cols) add("warning", "missing the site_id column")
-  if (!"project_id" %in% cols) add("warning", "missing the project_id column")
+  missing_column <- function(name, why) {
+    if (name %in% cols) return(invisible())
+    if (legacy) add("warning", paste0("missing the ", name, " column", why))
+    else add("error", paste0("missing the ", name, " column"))
+  }
+  missing_column("site_id", "")
   if (!"duration" %in% cols) {
-    add("warning", "missing the duration column; using the variable's duration")
+    missing_column("duration", "; using the variable's duration")
   } else {
-    unknown <- setdiff(unique(fc$duration), c(vars$duration, "PT30"))
+    unknown <- setdiff(unique(fc$duration), c(vars$duration, if (legacy) "PT30"))
     if (length(unknown) > 0) {
       add("warning", paste("durations the challenge does not use:",
                            paste(unknown, collapse = ", ")))
@@ -170,26 +181,22 @@ validate_forecast <- function(fc, cfg) {
   tibble::tibble(severity = severity, message = problems)
 }
 
-#' Put a valid forecast into the stored format
+#' Fill in the columns the old submission format left out
 #'
-#' * Adds `duration` when it is missing: the variable's duration in the config
-#'   when it has exactly one, otherwise `P1D`. Fixes the old `PT30` spelling.
-#' * Renames family `ensemble` to `sample`.
-#' * Takes `model_id` and `reference_datetime` from the file name when the
+#' Forecasts submitted in the old format may lack columns that every row now
+#' needs. Used only for such files (`legacy`, see [validate_forecast()]):
+#' * `duration` is the variable's duration in the config when it has exactly
+#'   one, otherwise `P1D`; the old `PT30` spelling becomes `PT30M`;
+#' * `model_id` and `reference_datetime` come from the file name when the
 #'   columns are missing (or `model_id` is `"null"`).
-#' * Adds `pub_datetime`, `reference_date` and the challenge's `project_id`.
-#' * Drops rows before the reference datetime, and rows beyond the variable's
-#'   `max_horizon` (in days; 35 for variables not in the config).
 #'
-#' @param fc Forecast that passed [validate_forecast()].
+#' @param fc Forecast from [read_submission()].
 #' @inheritParams config_get
 #' @param file_info One row of [parse_submission_filename()] for the file.
-#' @param pub_datetime When the forecast was published (processed).
-#' @return The standardised forecast as a tibble.
+#' @return The forecast with the columns filled in.
 #' @export
-standardize_forecast <- function(fc, cfg, file_info, pub_datetime = Sys.time()) {
+fill_legacy_columns <- function(fc, cfg, file_info) {
   vars <- target_variables(cfg)
-
   if (!"duration" %in% names(fc)) {
     one_duration <- vars |>
       dplyr::distinct(.data$variable, .data$duration) |>
@@ -198,12 +205,116 @@ standardize_forecast <- function(fc, cfg, file_info, pub_datetime = Sys.time()) 
       dplyr::left_join(one_duration, by = "variable") |>
       dplyr::mutate(duration = dplyr::coalesce(.data$duration, "P1D"))
   }
+  fc$duration <- as.character(fc$duration)
+  fc$duration[fc$duration %in% "PT30"] <- "PT30M"
   if (!"model_id" %in% names(fc) || isTRUE(fc$model_id[1] == "null")) {
     fc$model_id <- file_info$model_id
   }
   if (!"reference_datetime" %in% names(fc)) {
     fc$reference_datetime <- file_info$reference_datetime
   }
+  fc
+}
+
+#' What a challenge accepts: its (variable, duration, site) combinations
+#'
+#' Each target group lists variables and durations, and the site metadata file
+#' marks the group's sites. A forecast row belongs to the challenge when its
+#' variable, duration and site fit one group. Read once per run and passed to
+#' [filter_forecast_rows()], so the site file is not read for every submission.
+#'
+#' @inheritParams config_get
+#' @return A list with `valid` (a tibble of `variable`, `duration`, `site_id`)
+#'   and `min_reference_date` (a date, or `NA`).
+#' @export
+submission_rules <- function(cfg) {
+  vars <- target_variables(cfg)
+  sites <- purrr::map(unique(vars$group), function(group) {
+    tibble::tibble(group = group, site_id = as.character(read_sites(cfg, group)$site_id))
+  }) |>
+    purrr::list_rbind()
+  valid <- vars |>
+    dplyr::distinct(.data$group, .data$variable, .data$duration) |>
+    dplyr::inner_join(sites, by = "group", relationship = "many-to-many") |>
+    dplyr::distinct(.data$variable, .data$duration, .data$site_id)
+  min_date <- config_get(cfg, "submissions", "min_reference_date", default = NA)
+  list(valid = valid, min_reference_date = as.Date(min_date))
+}
+
+#' Keep the rows that belong to this challenge
+#'
+#' One file can go to several challenges, so each challenge keeps only its own
+#' rows. A row is dropped when
+#' * its `project_id` label is another challenge's (a row with no label, or this
+#'   challenge's, is kept: the label is how a file sends different data to two
+#'   challenges that use the same site id);
+#' * its `reference_datetime` is missing, or before `submissions$min_reference_date`;
+#' * its variable and duration are not a combination the challenge forecasts;
+#' * its site is not one of the sites of the group that forecasts them.
+#'
+#' @param fc Forecast with `variable`, `duration`, `site_id` and
+#'   `reference_datetime` columns (see [validate_forecast()] and
+#'   [fill_legacy_columns()]).
+#' @inheritParams config_get
+#' @param rules From [submission_rules()].
+#' @return A list with `forecast` (the rows kept) and `dropped`, a tibble of
+#'   `reason` and `n` for each reason rows were dropped.
+#' @export
+filter_forecast_rows <- function(fc, cfg, rules = submission_rules(cfg)) {
+  label <- rep(NA_character_, nrow(fc))
+  if ("project_id" %in% names(fc)) label <- as.character(fc$project_id)
+  reference <- lubridate::as_date(lubridate::as_datetime(fc$reference_datetime))
+  too_early <- !is.na(rules$min_reference_date) & !is.na(reference) &
+    reference < rules$min_reference_date
+  known <- paste(fc$variable, fc$duration, sep = "\r") %in%
+    paste(rules$valid$variable, rules$valid$duration, sep = "\r")
+  at_site <- paste(fc$variable, fc$duration, fc$site_id, sep = "\r") %in%
+    paste(rules$valid$variable, rules$valid$duration, rules$valid$site_id, sep = "\r")
+
+  reason <- dplyr::case_when(
+    !is.na(label) & label != cfg$project_id ~ "labelled for another challenge",
+    is.na(reference) ~ "no reference_datetime",
+    too_early ~ paste0("reference date before ", rules$min_reference_date),
+    !known ~ "variable and duration are not forecast by this challenge",
+    !at_site ~ "site is not one of this challenge's sites for the variable",
+    .default = NA_character_
+  )
+  counts <- table(reason[!is.na(reason)])
+  list(
+    forecast = fc[is.na(reason), ],
+    dropped = tibble::tibble(reason = names(counts), n = as.integer(counts))
+  )
+}
+
+# "dropped 12 rows: 10 variable and duration ..., 2 site ..."
+describe_dropped <- function(dropped) {
+  if (nrow(dropped) == 0) return("")
+  paste0("dropped ", sum(dropped$n), " row", if (sum(dropped$n) != 1) "s", ": ",
+         paste0(dropped$n, " ", dropped$reason, collapse = "; "))
+}
+
+#' Put a valid forecast into the stored format
+#'
+#' * Renames family `ensemble` to `sample`.
+#' * Adds `pub_datetime`, `reference_date` and the challenge's `project_id`.
+#' * Drops rows before the reference datetime, and rows beyond the variable's
+#'   `max_horizon` (in days; 35 for variables not in the config).
+#'
+#' With `legacy`, the columns the old format left out are filled in first, see
+#' [fill_legacy_columns()].
+#'
+#' @param fc Forecast that passed [validate_forecast()].
+#' @inheritParams config_get
+#' @param file_info One row of [parse_submission_filename()] for the file; only
+#'   used with `legacy`.
+#' @param pub_datetime When the forecast was published (processed).
+#' @param legacy Fill in missing columns from the file name and config.
+#' @return The standardised forecast as a tibble.
+#' @export
+standardize_forecast <- function(fc, cfg, file_info = NULL, pub_datetime = Sys.time(),
+                                 legacy = FALSE) {
+  vars <- target_variables(cfg)
+  if (legacy) fc <- fill_legacy_columns(fc, cfg, file_info)
 
   # Whole seconds, UTC, as the bundles have always stored it.
   pub_datetime <- lubridate::as_datetime(
@@ -219,7 +330,6 @@ standardize_forecast <- function(fc, cfg, file_info, pub_datetime = Sys.time()) 
     dplyr::mutate(
       duration = as.character(.data$duration),
       family = as.character(.data$family),
-      duration = dplyr::if_else(.data$duration == "PT30", "PT30M", .data$duration),
       family = dplyr::if_else(.data$family == "ensemble", "sample", .data$family),
       pub_datetime = pub_datetime,
       datetime = lubridate::as_datetime(.data$datetime),

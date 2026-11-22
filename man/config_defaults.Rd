@@ -20,12 +20,15 @@ engine's reads of them assume. \code{false} makes every read use the key.
 \item \code{credentials}: for each store, the \emph{names} of the environment variables
 holding its access key and secret. These are the GitHub secret names the
 workflows already use. The secrets themselves never go in the config.
-\item \code{submissions}: the bucket is read (\code{use_bucket}), baseline forecasts go
+\item \code{submissions}: the bucket is read (\code{use_bucket}) and its processed files
+are deleted (\code{bucket$delete_processed}), baseline forecasts go
 through it (\code{baselines_destination}), published results keep
-200 rows per model, and GitHub repositories are read with files up to
-100 MB, at most 100 new files per repository per run, and registered by
-hand unless \code{issue_registration} is on. The GitHub source
-itself is off until \code{submissions$github$registry} is set.
+200 rows per model, and contributors' git repositories are read with files up to
+100 MB, at most 100 new files per repository per run, only from
+github.com, gitlab.com, bitbucket.org and codeberg.org, and registered by
+hand unless \code{issue_registration} is on. The repository source
+itself is off until \code{submissions$repos$registry} is set. (The old name of
+\code{submissions$repos} is \code{submissions$github}; it is still read.)
 \item \code{sites$columns}: how columns in the site metadata file map to the
 standard names used by \code{\link[=read_sites]{read_sites()}}. The names are standard, the values
 are the file's columns. The defaults match the NEON site metadata file.

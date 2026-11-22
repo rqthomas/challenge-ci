@@ -4,29 +4,38 @@
 \alias{standardize_forecast}
 \title{Put a valid forecast into the stored format}
 \usage{
-standardize_forecast(fc, cfg, file_info, pub_datetime = Sys.time())
+standardize_forecast(
+  fc,
+  cfg,
+  file_info = NULL,
+  pub_datetime = Sys.time(),
+  legacy = FALSE
+)
 }
 \arguments{
 \item{fc}{Forecast that passed \code{\link[=validate_forecast]{validate_forecast()}}.}
 
 \item{cfg}{Configuration from \code{\link[=read_config]{read_config()}}.}
 
-\item{file_info}{One row of \code{\link[=parse_submission_filename]{parse_submission_filename()}} for the file.}
+\item{file_info}{One row of \code{\link[=parse_submission_filename]{parse_submission_filename()}} for the file; only
+used with \code{legacy}.}
 
 \item{pub_datetime}{When the forecast was published (processed).}
+
+\item{legacy}{Fill in missing columns from the file name and config.}
 }
 \value{
 The standardised forecast as a tibble.
 }
 \description{
 \itemize{
-\item Adds \code{duration} when it is missing: the variable's duration in the config
-when it has exactly one, otherwise \code{P1D}. Fixes the old \code{PT30} spelling.
 \item Renames family \code{ensemble} to \code{sample}.
-\item Takes \code{model_id} and \code{reference_datetime} from the file name when the
-columns are missing (or \code{model_id} is \code{"null"}).
 \item Adds \code{pub_datetime}, \code{reference_date} and the challenge's \code{project_id}.
 \item Drops rows before the reference datetime, and rows beyond the variable's
 \code{max_horizon} (in days; 35 for variables not in the config).
 }
+}
+\details{
+With \code{legacy}, the columns the old format left out are filled in first, see
+\code{\link[=fill_legacy_columns]{fill_legacy_columns()}}.
 }

@@ -23,10 +23,39 @@ The other stores' names (`EFI_NRP_*`, `AWS_*_SUBMISSIONS`) are unchanged.
 This release is therefore a major one. Apart from the rename, every new key is
 optional and the defaults keep today's behaviour.
 
-- Submissions can also be read from contributors' public GitHub repositories,
-  alongside the submissions bucket: `submissions$github$registry` turns it on,
-  and contributors describe their models in `challenge-model.yaml`. See
-  "Submissions from GitHub repositories" in `docs/operations.md`.
+- Submissions can also be read from contributors' public git repositories (any
+  host: GitHub, GitLab, Bitbucket, Codeberg, or others on
+  `submissions$repos$allowed_hosts`), alongside the submissions bucket:
+  `submissions$repos$registry` turns it on (`submissions$github` is read as the
+  old name), and contributors describe their models in `challenge-model.yaml`.
+  Repositories are read with anonymous, shallow, blob-less git clones. See
+  "Submissions from git repositories" in `docs/operations.md`.
+- Every model has a repository; the registry's `location` column (`repo` or
+  `bucket`) says whether its forecasts come from the repository or the
+  submissions bucket. A bucket file is processed only for a model registered for
+  the bucket (or a baseline); models registered for a repository cannot use it.
+  Until `submissions$bucket$strict_from`, unregistered models and old-format
+  bucket files are still accepted, with a note. `draft_challenge_model()` and
+  `unregistered_bucket_models()` help teams move.
+- File names no longer carry the theme for repository submissions: a forecast is
+  identified by its `model_id` and `reference_datetime` columns, one file can
+  hold several variables, and the same file can serve several challenges. Each
+  challenge keeps only its own rows (variable and duration of a target group, a
+  site of that group, an optional `project_id` label) and reports the rows kept
+  and dropped. `duration`, `model_id`, `reference_datetime` and `site_id` are
+  required columns (old bucket files are exempt until `strict_from`).
+- The first forecast stored for each (model, reference date, variable, duration)
+  wins, file by file; the stored units are kept in
+  `<processed_submissions>_units.csv` (`rebuild_unit_record()` rebuilds it).
+- The processed-submissions record now has `key`, `sha` and `status` columns and
+  is written every 25 files instead of after each file; bucket files are
+  deleted only after the record that lists them is written
+  (`submissions$bucket$delete_processed: false` for a shared bucket). A file with
+  no rows for the challenge is recorded as skipped and looked at again if it is
+  edited. The published results gain `rows_kept` and `rows_dropped`, and `source`
+  is now `host/owner/name`.
+- The registration issue form asks for the repository (any host) and where the
+  forecasts go; copy the new `inst/issue_forms/register-forecast-repo.yml`.
 - The `submissions` stage publishes what happened to each file, for the bucket
   and GitHub, to `<forecasts_bucket>/submission_results/<model_id>.csv`. This
   adds files to the forecasts bucket.
@@ -129,6 +158,9 @@ optional and the defaults keep today's behaviour.
     `catalog_repo`, as before. A validation warning appears if the catalog would
     land on the code's default branch. A large, daily-committed catalog still
     belongs in a repository of its own.
+  - The home page has a "Recent activity" card (newest submission outcomes, refused
+    files with the reason, repositories joining, the latest scored forecast date),
+    built from a new `activity.json` file.
   - New optional keys: `dashboard$tagline`, `key_request_url`, `min_forecasts`,
     `skill_baseline`, `publish_results`.
   - The old Performance and Catalog pages are gone (replaced by Leaderboard,

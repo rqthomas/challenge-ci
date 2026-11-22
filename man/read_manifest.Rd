@@ -7,17 +7,23 @@
 \usage{
 read_manifest(cfg)
 
-write_manifest(cfg, keys)
+write_manifest(cfg, record)
 }
 \arguments{
 \item{cfg}{Configuration from \code{\link[=read_config]{read_config()}}.}
 
-\item{keys}{All processed keys, to write as the new record.}
+\item{record}{The record to write: a tibble with \code{key}, \code{sha} and \code{status}.}
 }
 \value{
-Character vector of processed submission keys.
+A tibble with \code{key}, \code{sha} and \code{status}.
 }
 \description{
+A CSV with a row for each file the CI has handled: its \code{key}, the file's
+\code{sha} (a git blob SHA for repositories) and the \code{status} it ended with. A
+file with only a \code{key} column (the first version of the record) counts as
+processed.
+}
+\details{
 Only a record that does not exist yet starts a new, empty one. Any other
 error (access, network) stops the run, because carrying on with an empty
 record would overwrite the real one and reprocess every submission.

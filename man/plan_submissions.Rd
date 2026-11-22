@@ -14,7 +14,8 @@ plan_submissions(
 \arguments{
 \item{keys}{Every key in the submissions bucket.}
 
-\item{processed}{Keys already in the processed-submissions record.}
+\item{processed}{Tokens of the processed-submissions record (see
+\code{\link[=manifest_tokens]{manifest_tokens()}}).}
 
 \item{exclude_patterns}{Regular expressions. Keys matching any of them are
 never downloaded or recorded (\code{submissions$exclude_patterns} in the

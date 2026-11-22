@@ -30,17 +30,17 @@ test_that("the GitHub registry must exist when it is a local file", {
   root <- local_challenge_repo()
   path <- file.path(root, "challenge_configuration.yaml")
   cfg <- yaml::read_yaml(path)
-  cfg$submissions$github$registry <- "registry/forecast_repos.csv"
+  cfg$submissions$repos$registry <- "registry/forecast_repos.csv"
   yaml::write_yaml(cfg, path)
   problems <- check_challenge_repo(root)
-  expect_equal(problems$key[problems$severity == "error"], "submissions$github$registry")
+  expect_equal(problems$key[problems$severity == "error"], "submissions$repos$registry")
 
   dir.create(file.path(root, "registry"))
   writeLines("repo,repo_id,registered", file.path(root, "registry", "forecast_repos.csv"))
   expect_equal(nrow(check_challenge_repo(root)), 0)
 
   # A URL is not checked.
-  cfg$submissions$github$registry <- "https://example.org/repos.csv"
+  cfg$submissions$repos$registry <- "https://example.org/repos.csv"
   yaml::write_yaml(cfg, path)
   expect_equal(nrow(check_challenge_repo(root)), 0)
 })

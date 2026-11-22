@@ -50,7 +50,37 @@ test_that("format errors make a forecast invalid", {
   expect_match(errors(big), "500")
 })
 
-test_that("recoverable problems are warnings", {
+test_that("the columns that identify a row are required", {
+  cfg <- test_config()
+  fc <- example_forecast()
+  errors <- function(fc, legacy = FALSE) {
+    p <- validate_forecast(fc, cfg, legacy = legacy)
+    p$message[p$severity == "error"]
+  }
+  expect_match(errors(dplyr::select(fc, -"model_id")), "model_id")
+  expect_match(errors(dplyr::select(fc, -"duration")), "duration")
+  expect_match(errors(dplyr::select(fc, -"site_id")), "site_id")
+  expect_match(errors(dplyr::rename(fc, start_time = "reference_datetime")), "reference_datetime")
+  # The project_id label is optional.
+  expect_length(errors(dplyr::select(fc, -"project_id")), 0)
+})
+
+test_that("the old format is accepted with warnings when asked for", {
+  cfg <- test_config()
+  warnings <- function(fc) {
+    p <- validate_forecast(fc, cfg, legacy = TRUE)
+    expect_false(any(p$severity == "error"))
+    p$message
+  }
+  fc <- example_forecast()
+  expect_match(warnings(dplyr::select(fc, -"model_id")), "file name")
+  expect_match(warnings(dplyr::select(fc, -"duration")), "duration")
+  expect_match(warnings(dplyr::rename(fc, start_time = "reference_datetime")), "start_time")
+  expect_match(warnings(dplyr::select(fc, -"site_id")), "site_id")
+  expect_length(warnings(dplyr::mutate(fc, duration = "PT30")), 0)
+})
+
+test_that("other recoverable problems are warnings", {
   cfg <- test_config()
   warnings <- function(fc) {
     p <- validate_forecast(fc, cfg)
@@ -58,21 +88,17 @@ test_that("recoverable problems are warnings", {
     p$message
   }
   fc <- example_forecast()
-  expect_match(warnings(dplyr::select(fc, -"model_id")), "file name")
   expect_match(warnings(dplyr::mutate(fc, variable = "salinity")), "salinity")
-  expect_match(warnings(dplyr::select(fc, -"duration")), "duration")
   expect_match(warnings(dplyr::mutate(fc, duration = "P1M")), "P1M")
-  expect_match(warnings(dplyr::rename(fc, start_time = "reference_datetime")), "start_time")
-  expect_match(warnings(dplyr::select(fc, -"site_id")), "site_id")
 })
 
-test_that("standardize_forecast() fills in and fixes columns", {
+test_that("legacy standardize_forecast() fills in and fixes columns", {
   cfg <- test_config()
   pub <- as.POSIXct("2024-03-02 10:11:12.7", tz = "UTC")
   fc <- example_forecast(family = "sample") |>
     dplyr::mutate(family = "ensemble", model_id = "null", project_id = NULL) |>
     dplyr::select(-"duration", -"reference_datetime")
-  out <- standardize_forecast(fc, cfg, example_file_info(), pub_datetime = pub)
+  out <- standardize_forecast(fc, cfg, example_file_info(), pub_datetime = pub, legacy = TRUE)
 
   expect_equal(unique(out$duration), "P1D")        # from the config
   expect_equal(unique(out$family), "sample")
@@ -85,7 +111,7 @@ test_that("standardize_forecast() fills in and fixes columns", {
 
 test_that("standardize_forecast() fixes the old PT30 spelling", {
   fc <- dplyr::mutate(example_forecast(), duration = "PT30")
-  out <- standardize_forecast(fc, test_config(), example_file_info())
+  out <- standardize_forecast(fc, test_config(), example_file_info(), legacy = TRUE)
   expect_equal(unique(out$duration), "PT30M")
 })
 
@@ -132,4 +158,41 @@ test_that("summaries have one row per forecast row", {
   expect_equal(unique(s$mean), 10)
   expected <- c("median", "sd", "quantile02.5", "quantile97.5", "reference_date")
   expect_true(all(expected %in% names(s)))
+})
+
+test_that("filter_forecast_rows() keeps only this challenge's rows", {
+  cfg <- test_config()
+  rules <- submission_rules(cfg)
+  # Lakes sites are AAAA and BBBB; the richness (P1W) sites are BBBB and CCCC.
+  expect_setequal(paste(rules$valid$variable, rules$valid$duration, rules$valid$site_id),
+                  c(paste("temperature P1D", c("AAAA", "BBBB")),
+                    paste("oxygen P1D", c("AAAA", "BBBB")),
+                    paste("richness P1W", c("BBBB", "CCCC"))))
+
+  row <- function(...) {
+    dplyr::mutate(example_forecast(n_days = 1, family = "sample")[1, ], ...)
+  }
+  fc <- dplyr::bind_rows(
+    row(),                                            # kept
+    row(site_id = "CCCC"),                            # not a lakes site
+    row(variable = "salinity"),                       # not forecast here
+    row(duration = "PT1H"),                           # variable, not this duration
+    row(project_id = "other"),                        # labelled for another challenge
+    row(project_id = NA),                             # unlabelled: kept
+    row(variable = "richness", duration = "P1W", site_id = "CCCC")  # birds site: kept
+  )
+  out <- filter_forecast_rows(fc, cfg, rules)
+  expect_equal(nrow(out$forecast), 3)
+  expect_equal(sort(out$dropped$n), c(1, 1, 2))
+  expect_match(describe_dropped(out$dropped), "dropped 4 rows")
+  expect_equal(describe_dropped(out$dropped[0, ]), "")
+
+  # The same site can sit in the challenge for one variable and not another.
+  expect_equal(nrow(filter_forecast_rows(row(variable = "richness", duration = "P1W",
+                                             site_id = "AAAA"), cfg, rules)$forecast), 0)
+
+  cfg$submissions$min_reference_date <- "2024-04-01"
+  early <- filter_forecast_rows(row(), cfg, submission_rules(cfg))
+  expect_equal(nrow(early$forecast), 0)
+  expect_match(early$dropped$reason, "before 2024-04-01")
 })

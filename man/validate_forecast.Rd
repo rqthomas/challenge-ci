@@ -4,12 +4,14 @@
 \alias{validate_forecast}
 \title{Check a forecast against the challenge's format rules}
 \usage{
-validate_forecast(fc, cfg)
+validate_forecast(fc, cfg, legacy = FALSE)
 }
 \arguments{
 \item{fc}{Forecast from \code{\link[=read_submission]{read_submission()}}.}
 
 \item{cfg}{Configuration from \code{\link[=read_config]{read_config()}}.}
+
+\item{legacy}{Accept the old format (see above).}
 }
 \value{
 A tibble with columns \code{severity} (\code{"error"} or \code{"warning"}) and
@@ -17,32 +19,36 @@ A tibble with columns \code{severity} (\code{"error"} or \code{"warning"}) and
 }
 \description{
 The rules match those of \code{neon4cast::forecast_output_validator()} but take
-the variables and durations from \code{cfg}, and two checks are added (marked
-\emph{new}).
+the variables and durations from \code{cfg}, with these differences: the file is
+checked for no rows, a prediction column that is not numeric, and (below) the
+columns that identify each row.
 }
 \details{
 Errors (the file is rejected and archived unprocessed):
 \itemize{
-\item no rows (\emph{new});
+\item no rows;
 \item more than one \code{model_id}, or a \code{model_id} that is \code{NA};
 \item no \code{variable} or \code{prediction} column, or a \code{prediction} column that is not
-numeric (\emph{new});
+numeric;
 \item an \code{ensemble} column (it must be called \code{parameter});
 \item no \code{family} or \code{parameter} column, more than one \code{family}, or more than 500
 ensemble members;
 \item no \code{datetime} column, or one that is not a date or date-time;
-\item neither a \code{reference_datetime} nor a \code{start_time} column.
+\item no \code{model_id}, \code{reference_datetime}, \code{site_id} or \code{duration} column. With
+\code{legacy = TRUE} these are warnings instead, because the old format left
+them out and \code{\link[=fill_legacy_columns]{fill_legacy_columns()}} can fill them in: \code{model_id} and
+\code{reference_datetime} from the file name (a \code{start_time} column counts as
+\code{reference_datetime}) and \code{duration} from the variable.
 }
 
 Warnings (the file is processed, and the problem is logged):
 \itemize{
-\item no \code{model_id} column (it is taken from the file name);
-\item variables that are not in the challenge;
-\item no \code{site_id}, \code{duration} or \code{project_id} column, or a duration the
-challenge does not use;
-\item a \code{start_time} column instead of \code{reference_datetime} (the reference date
-is taken from the file name).
+\item variables that are not in the challenge, or a duration the challenge does
+not use (those rows are dropped, see \code{\link[=filter_forecast_rows]{filter_forecast_rows()}}).
 }
+
+A \code{project_id} column is optional. It labels the challenge a row is for; see
+\code{\link[=filter_forecast_rows]{filter_forecast_rows()}}.
 
 Rows beyond a variable's \code{max_horizon} are not an error here.
 \code{\link[=standardize_forecast]{standardize_forecast()}} drops them.

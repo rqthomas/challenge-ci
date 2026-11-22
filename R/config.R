@@ -40,7 +40,14 @@ read_config <- function(path = config_path(), validate = TRUE) {
       "i" = "Run from the repository root or set {.envvar CHALLENGE_CONFIG}."
     ))
   }
-  cfg <- utils::modifyList(config_defaults(), yaml::read_yaml(path))
+  user <- yaml::read_yaml(path)
+  # `submissions$github` is the old name of `submissions$repos`.
+  if (!is.null(user$submissions$github)) {
+    user$submissions$repos <- utils::modifyList(user$submissions$github,
+                                                user$submissions$repos %||% list())
+    user$submissions$github <- NULL
+  }
+  cfg <- utils::modifyList(config_defaults(), user)
   # Defaults that depend on other settings.
   cfg$summaries_bucket <- cfg$summaries_bucket %||% cfg$forecasts_bucket
   if (validate) validate_config(cfg)
@@ -60,12 +67,15 @@ read_config <- function(path = config_path(), validate = TRUE) {
 #' * `credentials`: for each store, the *names* of the environment variables
 #'   holding its access key and secret. These are the GitHub secret names the
 #'   workflows already use. The secrets themselves never go in the config.
-#' * `submissions`: the bucket is read (`use_bucket`), baseline forecasts go
+#' * `submissions`: the bucket is read (`use_bucket`) and its processed files
+#'   are deleted (`bucket$delete_processed`), baseline forecasts go
 #'   through it (`baselines_destination`), published results keep
-#'   200 rows per model, and GitHub repositories are read with files up to
-#'   100 MB, at most 100 new files per repository per run, and registered by
-#'   hand unless `issue_registration` is on. The GitHub source
-#'   itself is off until `submissions$github$registry` is set.
+#'   200 rows per model, and contributors' git repositories are read with files up to
+#'   100 MB, at most 100 new files per repository per run, only from
+#'   github.com, gitlab.com, bitbucket.org and codeberg.org, and registered by
+#'   hand unless `issue_registration` is on. The repository source
+#'   itself is off until `submissions$repos$registry` is set. (The old name of
+#'   `submissions$repos` is `submissions$github`; it is still read.)
 #' * `sites$columns`: how columns in the site metadata file map to the
 #'   standard names used by [read_sites()]. The names are standard, the values
 #'   are the file's columns. The defaults match the NEON site metadata file.
@@ -85,8 +95,11 @@ config_defaults <- function() {
       use_bucket = TRUE,
       baselines_destination = "submissions_bucket",
       results_max_rows = 200,
-      github = list(max_file_mb = 100, max_files_per_repo = 100,
-                    issue_registration = FALSE)
+      bucket = list(delete_processed = TRUE),
+      repos = list(max_file_mb = 100, max_files_per_repo = 100,
+                   issue_registration = FALSE,
+                   allowed_hosts = c("github.com", "gitlab.com", "bitbucket.org",
+                                     "codeberg.org"))
     ),
     sites = list(
       columns = list(site_id = "field_site_id",
@@ -244,6 +257,23 @@ config_problems <- function(cfg) {
   if (!is.null(destination) && !destination %in% baseline_destinations) {
     add("error", "submissions$baselines_destination",
         paste0("must be one of ", paste(baseline_destinations, collapse = ", ")))
+  }
+  strict_from <- cfg$submissions$bucket$strict_from
+  if (!is.null(strict_from) &&
+        is.na(tryCatch(as.Date(as.character(strict_from), format = "%Y-%m-%d"),
+                       error = function(e) NA))) {
+    add("error", "submissions$bucket$strict_from", "must be a date, YYYY-MM-DD")
+  }
+  if (!is.null(cfg$submissions$bucket$delete_processed) &&
+        !rlang::is_bool(cfg$submissions$bucket$delete_processed)) {
+    add("error", "submissions$bucket$delete_processed", "must be true or false")
+  }
+  hosts <- cfg$submissions$repos$allowed_hosts
+  bad_hosts <- !is.character(hosts) || length(hosts) == 0 || anyNA(hosts) ||
+    !all(grepl("^[a-z0-9.-]+$", hosts))
+  if (!is.null(hosts) && bad_hosts) {
+    add("error", "submissions$repos$allowed_hosts",
+        "must be a list of lower-case host names such as github.com")
   }
   site_url <- cfg$sites$metadata_url %||% cfg$catalog_config$site_metadata_url
   if (!rlang::is_string(site_url)) {

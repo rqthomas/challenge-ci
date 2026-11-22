@@ -33,6 +33,7 @@ outside `A-Za-z0-9_.-` becomes `_`.
 | `models.json` | Every registered or scored model, for labels and filters. |
 | `leaderboard/<id>.json` | Scores of every model for one variable, by window, horizon and date. |
 | `forecasts/<id>__<site>.json` | The latest forecast and a scored one at a plot site, with observations. |
+| `activity.json` | The recent activity feed of the home page: newest submissions outcomes and the latest scored forecast date. |
 | `targets/<id>.json` | The observations of one variable at every focal site, for the targets page. |
 | `models/<model>.json` | One model's registration and the variables it has scores for. |
 | `results/<name>.json`, `results/index.json` | What happened to each file a model submitted. Published unless `dashboard$publish_results: false`. |
@@ -120,6 +121,26 @@ time is midnight UTC, as for daily and longer targets, otherwise full ISO
 times) and `v` the observed values (4–5 significant digits). A series longer
 than 4,000 points is thinned evenly, keeping its first and last points. Rows
 with no observation are left out.
+
+### `activity.json`
+
+```text
+schema, updated
+events[] {type, time, ...}      newest first, at most 15
+  type "submission": status, model_id?, file, reason?, source?
+  type "scored":     date
+```
+
+What the home page's "Recent activity" shows. A `submission` event is one outcome
+from the published submission results (see `results/`): `status` is `processed`,
+`invalid`, `failed`, `unreadable`, `registered` (a repository joined) or
+`registration_invalid`; `reason` is cut to 160 characters; `model_id` is missing for
+a repository whose `challenge-model.yaml` cannot be read, and `source` then names it
+(`github:owner/repo`). A file that was only skipped is not news and is left out, and
+so are the challenge's own baseline models, which submit every day. The one `scored`
+event carries the latest forecast date (`date`) that has scores. Without published
+results (`dashboard$publish_results: false`) the feed has only that event; before
+anything is scored it may be empty.
 
 ### `models/<model>.json` and `models.json`
 

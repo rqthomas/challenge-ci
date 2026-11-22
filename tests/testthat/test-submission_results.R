@@ -35,7 +35,7 @@ test_that("results are published per model and merged with earlier ones", {
   expect_equal(m1$file, c("a.csv", "b.csv"))   # the repeat was not added again
   expect_equal(m1$first_seen[1], "2026-01-01T00:00:00Z")
   expect_equal(names(m1), c("model_id", "file", "source", "sha", "first_seen",
-                            "status", "reason", "warnings"))
+                            "status", "reason", "warnings", "rows_kept", "rows_dropped"))
 })
 
 test_that("only the latest rows are kept", {

@@ -4,12 +4,14 @@
 \alias{check_registration}
 \title{Check a repository and register it}
 \usage{
-check_registration(cfg, repo)
+check_registration(cfg, repo, location = "repo")
 }
 \arguments{
 \item{cfg}{Configuration from \code{\link[=read_config]{read_config()}}.}
 
-\item{repo}{The repository, \code{owner/name}.}
+\item{repo}{The repository, \code{host/owner/name} (see \code{\link[=normalize_repo]{normalize_repo()}}).}
+
+\item{location}{Where the forecasts go: \code{repo} or \code{bucket}.}
 }
 \value{
 A list with \code{status}, one of \code{"registered"} (add it to the registry),

@@ -21,22 +21,27 @@ together:
 }
 \details{
 \itemize{
-\item the submissions bucket (unless \code{submissions$use_bucket} is \code{false});
-\item the contributors' GitHub repositories listed in the registry named by
-\code{submissions$github$registry}, when that is set (see
-\code{\link[=list_github_submissions]{list_github_submissions()}}).
+\item the submissions bucket (unless \code{submissions$use_bucket} is \code{false}): for
+models registered with \code{location: bucket}, and, until
+\code{submissions$bucket$strict_from}, models not registered at all;
+\item the contributors' git repositories listed in the registry named by
+\code{submissions$repos$registry}, when that is set (see
+\code{\link[=list_repo_submissions]{list_repo_submissions()}}).
 }
 
 For each new file:
 \enumerate{
 \item download it (a file that cannot be read is skipped and retried next run);
-\item \code{\link[=process_submission]{process_submission()}} it, and upload any parquet and summaries to the
-forecasts and summaries buckets;
+\item \code{\link[=process_submission]{process_submission()}} it: keep the rows that belong to this challenge
+and drop those of a unit (model, reference date, variable, duration)
+already stored, then upload parquet and summaries to the forecasts and
+summaries buckets;
 \item archive the raw file in \verb{<forecasts_bucket>/raw/}, valid or not;
 \item add it to the processed-submissions record and, for the bucket, delete it
-there (best effort).
+there (best effort) once the record is written.
 }
 
+The record is written every few files and at the end, not after each file.
 Afterwards what happened to each file is published for its submitter, see
 \code{\link[=write_submission_results]{write_submission_results()}}.
 

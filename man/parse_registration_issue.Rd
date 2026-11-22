@@ -10,14 +10,17 @@ parse_registration_issue(body)
 \item{body}{The issue's text.}
 }
 \value{
-A list with \code{repo} (\code{owner/name}, or \code{NA}) and \code{error} (why not).
+A list with \code{repo} (\code{host/owner/name}, or \code{NA}), \code{location} (\code{repo} or
+\code{bucket}) and \code{error} (why not).
 }
 \description{
-The issue form has one field, "Repository". GitHub writes an issue form's
-answers as \verb{### <label>} headings followed by the answer, which is what this
-reads. A plain \code{owner/name} or \verb{https://github.com/owner/name} address is
-accepted; anything else is rejected.
+The issue form has two fields, "Repository" and "Forecast files". GitHub
+writes an issue form's answers as \verb{### <label>} headings followed by the
+answer, which is what this reads. The repository may be \code{owner/name} (GitHub)
+or an \verb{https://} address on any host (see \code{\link[=normalize_repo]{normalize_repo()}}); anything else
+is rejected. The forecast files are in the repository, unless the answer
+under "Forecast files" mentions the bucket.
 }
 \examples{
-parse_registration_issue("### Repository\n\nhttps://github.com/alice/forecasts\n")
+parse_registration_issue("### Repository\n\nhttps://gitlab.com/alice/forecasts\n")
 }

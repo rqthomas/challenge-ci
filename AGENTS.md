@@ -83,6 +83,15 @@ DRY_RUN=true Rscript -e 'challengeci::run_stage()' <stage>   # from a challenge 
   (the release workflow rewrites them).
 - The Quarto visual editor rewrites inline R inside link URLs; keep pages in
   source mode.
+- Repositories are read with plain git (`R/git_repos.R`). Never use `git ls-tree -l`
+  in a partial clone (it fetches every blob), and clone `https://host/owner/name.git`
+  (GitLab redirects every request without `.git`). Tests use local bare repos with
+  `options(challengeci.git_protocols = c("https", "file"))`.
+- The processed record and the unit record are written in batches by `flush_state` in `R/submissions.R`;
+  bucket deletes must come after a successful record write, and a failed source still
+  flushes what it did.
+- `dplyr::bind_rows(named_list, df)` treats the list as columns; use
+  `bind_rows(c(unname(list), list(df)))`.
 
 ## Verifying a change
 

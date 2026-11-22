@@ -7,7 +7,7 @@
 #' Runs [config_problems()] on the repository's config and checks that every
 #' local file the config names exists: each group's `targets_script`,
 #' `catalog_config$site_columns_file`, the GitHub registry
-#' (`submissions$github$registry`) when it is a local path, and the site
+#' (`submissions$repos$registry`) when it is a local path, and the site
 #' metadata when it is a local path rather than a URL.
 #'
 #' @param root The challenge repository's root folder.
@@ -32,8 +32,8 @@ check_challenge_repo <- function(root = ".",
     if (!is.null(cfg$catalog_config$site_columns_file)) {
       paste0("catalog_config$site_columns_file=", cfg$catalog_config$site_columns_file)
     },
-    if (is_local_path(cfg$submissions$github$registry)) {
-      paste0("submissions$github$registry=", cfg$submissions$github$registry)
+    if (is_local_path(cfg$submissions$repos$registry)) {
+      paste0("submissions$repos$registry=", cfg$submissions$repos$registry)
     },
     if (is_local_path(cfg$sites$metadata_url)) {
       paste0("sites$metadata_url=", cfg$sites$metadata_url)

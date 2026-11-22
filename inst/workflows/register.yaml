@@ -3,7 +3,7 @@
 # (inst/issue_forms/register-forecast-repo.yml, to .github/ISSUE_TEMPLATE/); set
 # the engine version after @.
 # A contributor opens the form to register a GitHub repository; the workflow
-# checks it and adds it to the registry named by submissions$github$registry.
+# checks it and adds it to the registry named by submissions$repos$registry.
 name: register-forecast-repo
 
 on:

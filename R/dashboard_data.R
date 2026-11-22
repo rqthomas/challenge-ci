@@ -414,7 +414,7 @@ dashboard_datasets <- function(cfg, variables, publish_results = TRUE) {
 # access and headline numbers.
 dashboard_meta <- function(cfg, variables, baselines, stats, now, publish_results = TRUE) {
   settings <- dashboard_settings(cfg)
-  github_on <- !is.null(cfg$submissions$github$registry)
+  github_on <- !is.null(cfg$submissions$repos$registry)
   sites <- dashboard_sites(cfg)
   group_names <- names(cfg$target_groups)
   vars <- dplyr::left_join(variables, baselines, by = c("variable", "duration"))
@@ -432,7 +432,7 @@ dashboard_meta <- function(cfg, variables, baselines, stats, now, publish_result
       example_submission_repo = settings$example_submission_repo,
       key_request_url = settings$key_request_url,
       github_submissions = github_on,
-      issue_registration = isTRUE(cfg$submissions$github$issue_registration),
+      issue_registration = isTRUE(cfg$submissions$repos$issue_registration),
       catalog_url = stac_browser_url(cfg),
       citation = cfg$catalog_config$citation_text
     )),
@@ -470,8 +470,9 @@ dashboard_meta <- function(cfg, variables, baselines, stats, now, publish_result
 }
 
 # Published outcomes of every file, per model (see write_submission_results()).
-# Returns the names of the files written. `rows` keeps the most recent per
-# model; the index maps repositories to the models they submit.
+# `rows` keeps the most recent per model; the index maps repositories to the
+# models they submit. Returns (invisibly) the outcomes of all models as one
+# table, which the activity feed is made from (see activity_json()).
 stage_results <- function(cfg, out_dir, keep = 50) {
   dir.create(file.path(out_dir, "results"), recursive = TRUE, showWarnings = FALSE)
   folder <- bucket_uri(cfg, "forecasts_bucket", "submission_results", scheme = "remote")
@@ -483,6 +484,7 @@ stage_results <- function(cfg, out_dir, keep = 50) {
   })
   files <- files[grepl("\\.csv$", files)]
   index <- list()
+  events <- list()
   for (f in files) {
     name <- sub("\\.csv$", "", basename(f))
     rows <- tryCatch(read_published_results(paste0(folder, "/", basename(f))), error = function(e) {
@@ -501,13 +503,66 @@ stage_results <- function(cfg, out_dir, keep = 50) {
     jsonlite::write_json(list(schema = dashboard_data_schema, name = name, rows = out),
                          file.path(out_dir, "results", paste0(dashboard_slug(name), ".json")),
                          auto_unbox = TRUE)
+    events[[name]] <- rows[intersect(event_columns, names(rows))]
     index[[name]] <- list(sources = as.list(unique(stats::na.omit(rows$source))),
                           last = rows$first_seen[1],
                           models = as.list(unique(stats::na.omit(rows$model_id))))
   }
   jsonlite::write_json(list(schema = dashboard_data_schema, results = index),
                        file.path(out_dir, "results", "index.json"), auto_unbox = TRUE)
-  invisible(names(index))
+  invisible(dplyr::bind_rows(c(list(empty_events()), events)))
+}
+
+event_columns <- c("model_id", "file", "status", "reason", "first_seen", "source")
+
+empty_events <- function() {
+  tibble::as_tibble(rlang::set_names(rep(list(character()), length(event_columns)), event_columns))
+}
+
+# Outcomes that are news to other participants: a file was read, or refused, or a
+# repository joined. A file that was only skipped is not.
+activity_statuses <- c("processed", "invalid", "failed", "unreadable", "registered",
+                       "registration_invalid")
+
+#' The recent activity feed
+#'
+#' What the Overview page lists under "Recent activity": the newest outcomes of
+#' submitted files (from the published submission results) and the latest
+#' forecast date that has been scored. The challenge's own baseline models are
+#' left out, since they submit every day.
+#'
+#' @param submissions Outcomes of submitted files, as from `stage_results()`:
+#'   `model_id`, `file`, `status`, `reason`, `first_seen` and `source`.
+#' @param registered Registered models (see [read_registered_models()]).
+#' @param last_scored The latest reference date that has scores, or `NULL`.
+#' @param now Build time.
+#' @param n Number of events kept.
+#' @return A list for the `activity.json` file.
+#' @noRd
+activity_json <- function(submissions, registered, last_scored, now, n = 15) {
+  baselines <- registered$model_id[registered$baseline %in% TRUE]
+  for (column in setdiff(event_columns, names(submissions))) submissions[[column]] <- NA_character_
+  submitted <- submissions[event_columns] |>
+    dplyr::filter(.data$status %in% activity_statuses, !is.na(.data$first_seen),
+                  !.data$source %in% "baseline", !.data$model_id %in% baselines) |>
+    dplyr::arrange(dplyr::desc(.data$first_seen)) |>
+    utils::head(n)
+  events <- purrr::pmap(submitted, function(model_id, file, status, reason, first_seen, source) {
+    purrr::compact(list(
+      type = "submission", time = first_seen, status = status,
+      model_id = if (is.na(model_id)) NULL else model_id, file = file,
+      reason = if (is.na(reason)) NULL else substr(reason, 1, 160),
+      source = if (is.na(source)) NULL else source
+    ))
+  })
+  if (!is.null(last_scored) && is.finite(as.numeric(last_scored))) {
+    scored <- list(type = "scored", date = format(as.Date(last_scored)),
+                   time = format_utc(as.POSIXct(as.Date(last_scored), tz = "UTC")))
+    events <- c(events, list(scored))
+  }
+  times <- vapply(events, function(e) e$time, character(1))
+  list(schema = dashboard_data_schema, updated = format_utc(now),
+       events = unname(events[order(times, decreasing = TRUE)]))
 }
 
 write_dashboard_json <- function(x, path) {

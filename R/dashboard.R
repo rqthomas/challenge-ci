@@ -8,6 +8,7 @@
 #
 #   meta.json                  the challenge, variables, sites, datasets, access
 #   models.json                every model, for labels and filters
+#   activity.json              the recent activity feed of the home page
 #   leaderboard/<variable>.json  skill and CRPS by window, horizon and date
 #   forecasts/<variable>__<site>.json  the latest and a scored forecast, with observations
 #   targets/<variable>.json    the observations at the focal sites, for the targets page
@@ -123,11 +124,13 @@ stage_dashboard_data <- function(cfg, out_dir = file.path("dashboard", "data"),
   observations <- focal_observations(cfg)
   registered <- read_registered_models(cfg)
   stats <- dashboard_stats(cfg, conn, now)
-  write_dashboard_data(cfg, out_dir, now, inputs, observations, registered, stats, variables, conn)
+  submissions <- NULL
   if (isTRUE(settings$publish_results)) {
     remote_connect(cfg, "main", anonymous = anonymous_reads(cfg))
-    stage_results(cfg, out_dir)
+    submissions <- stage_results(cfg, out_dir)
   }
+  write_dashboard_data(cfg, out_dir, now, inputs, observations, registered, stats, variables,
+                       conn, submissions = submissions)
   readr::write_csv(variables, file.path(out_dir, "variables.csv"))
   readr::write_csv(dashboard_sites(cfg), file.path(out_dir, "sites.csv"))
   log_step("Dashboard: data written to {.path {out_dir}}")
@@ -143,12 +146,14 @@ dashboard_variables <- function(cfg, metadata = read_variable_metadata(cfg)) {
 
 # Writes the data contract from what was read: `inputs` has, per duration, the
 # `summaries` and `scores` as lazy tables (or NULL); `observations` are the
-# targets at the focal sites (see focal_observations()); `registered` the models from
-# read_registered_models(); `stats` the headline numbers. No bucket is read
+# targets at the focal sites (see focal_observations()); `submissions` the
+# outcomes of submitted files from stage_results(), for the activity feed;
+# `registered` the models from read_registered_models(); `stats` the headline
+# numbers. No bucket is read
 # here, so tests can run it on local files.
 write_dashboard_data <- function(cfg, out_dir, now, inputs, observations, registered, stats,
                                  variables = dashboard_variables(cfg),
-                                 conn = duckdbfs::cached_connection()) {
+                                 conn = duckdbfs::cached_connection(), submissions = NULL) {
   settings <- dashboard_settings(cfg)
   sites <- plot_sites(cfg)
   baselines <- skill_baselines(cfg)
@@ -156,6 +161,7 @@ write_dashboard_data <- function(cfg, out_dir, now, inputs, observations, regist
   scored_models <- character()
   models_by_variable <- list()
   active_models <- character()
+  last_scored <- NULL
   for (duration in unique(variables$duration)) {
     log_step("Dashboard: {duration}")
     lookback <- dashboard_lookback_days(duration)
@@ -201,6 +207,7 @@ write_dashboard_data <- function(cfg, out_dir, now, inputs, observations, regist
       }
     }
     if (!is.null(cells)) {
+      if (nrow(cells$date) > 0) last_scored <- max(c(last_scored, as.Date(cells$date$date)))
       in_window <- cells$window$window == windows[2]
       active_models <- union(active_models, unique(cells$window$model_id[in_window]))
     }
@@ -212,6 +219,8 @@ write_dashboard_data <- function(cfg, out_dir, now, inputs, observations, regist
   }
   write_dashboard_json(models_index_json(registered, scored_models, models_by_variable),
                        file.path(out_dir, "models.json"))
+  activity <- activity_json(submissions %||% empty_events(), registered, last_scored, now)
+  write_dashboard_json(activity, file.path(out_dir, "activity.json"))
   stats$n_active_models <- length(active_models)
   publish <- isTRUE(settings$publish_results)
   meta <- dashboard_meta(cfg, variables, baselines, stats, now, publish)

@@ -217,7 +217,7 @@ test_that("model files carry the registration and keep contacts private", {
 test_that("the meta file describes the challenge, access and datasets", {
   cfg <- dashboard_test_config()
   cfg$public_read <- FALSE
-  cfg$submissions <- list(github = list(registry = "r.csv", issue_registration = TRUE))
+  cfg$submissions <- list(repos = list(registry = "r.csv", issue_registration = TRUE))
   variables <- dashboard_test_variables(cfg)
   now <- utc("2024-06-30")
   meta <- dashboard_meta(cfg, variables, skill_baselines(cfg),
@@ -272,7 +272,7 @@ test_that("write_dashboard_data writes every file of the contract", {
     observations = obs, registered = registered, stats = list(n_forecasts = 1),
     variables = dashboard_test_variables(cfg))
   files <- list.files(out, recursive = TRUE)
-  expect_true(all(c("meta.json", "models.json", "leaderboard/temperature_P1D.json",
+  expect_true(all(c("meta.json", "models.json", "activity.json", "leaderboard/temperature_P1D.json",
                     "targets/temperature_P1D.json", "targets/richness_P1W.json",
                     "leaderboard/oxygen_P1D.json", "leaderboard/richness_P1W.json",
                     "forecasts/temperature_P1D__AAAA.json", "forecasts/temperature_P1D__BBBB.json",
@@ -285,6 +285,9 @@ test_that("write_dashboard_data writes every file of the contract", {
   expect_equal(meta$stats$n_active_models, 3)
   index <- jsonlite::read_json(file.path(out, "models.json"))
   expect_true("a" %in% vapply(index$models, `[[`, "", "model_id"))
+  # The feed has the latest scored forecast date (the newest reference date with scores).
+  feed <- jsonlite::read_json(file.path(out, "activity.json"))
+  expect_equal(feed$events[[1]]$type, "scored")
 })
 
 test_that("submission results are staged per model with a lookup index", {
@@ -315,6 +318,64 @@ test_that("submission results are staged per model with a lookup index", {
   expect_equal(index$m1$models[[1]], "m1")
   expect_length(index$github_7$models, 0)
   expect_false(file.exists(file.path(out, "results", "notes.json")))
+})
+
+test_that("stage_results() returns the outcomes of every model for the activity feed", {
+  published <- list(m1 = tibble::tibble(
+    model_id = "m1", file = "a.csv", source = "github:org/repo", first_seen = "2026-01-01T00:00:00Z",
+    status = "processed", reason = NA_character_, warnings = NA_character_))
+  testthat::local_mocked_bindings(
+    remote_files = function(path) "m1.csv",
+    read_published_results = function(remote) published$m1)
+  events <- stage_results(dashboard_test_config(), withr::local_tempdir())
+  expect_equal(names(events), event_columns)
+  expect_equal(events$model_id, "m1")
+  # Nothing published: no rows, but the same columns.
+  testthat::local_mocked_bindings(remote_files = function(path) character())
+  none <- stage_results(dashboard_test_config(), withr::local_tempdir())
+  expect_equal(names(none), event_columns)
+  expect_equal(nrow(none), 0)
+})
+
+test_that("the activity feed lists participants' news, newest first, without baselines", {
+  submissions <- tibble::tibble(
+    model_id = c("alpha", "alpha", "beta", "climatology", "gamma", "delta", NA, "alpha"),
+    file = c("lakes-2026-11-19-alpha.csv.gz", "lakes-2026-11-18-alpha.csv.gz",
+             "lakes-2026-11-17-beta.csv.gz", "lakes-2026-11-19-climatology.csv.gz",
+             "x.csv", "y.csv", "challenge-model.yaml", "z.csv"),
+    status = c("processed", "invalid", "processed", "processed", "skipped", "processed",
+               "registration_invalid", "processed"),
+    reason = c(NA, strrep("long reason ", 40), NA, NA, "bad name", NA, "no models", NA),
+    first_seen = c("2026-11-19T10:00:00Z", "2026-11-18T10:00:00Z", "2026-11-17T10:00:00Z",
+                   "2026-11-19T11:00:00Z", "2026-11-19T12:00:00Z", "2026-11-16T10:00:00Z",
+                   "2026-11-15T10:00:00Z", NA),
+    source = c("github:o/alpha", "github:o/alpha", "github:o/beta", "baseline", "bucket",
+               "github:o/delta", "github:o/broken", "bucket"))
+  registered <- tibble::tibble(model_id = c("alpha", "beta", "climatology"),
+                               baseline = c(FALSE, FALSE, TRUE))
+  now <- utc("2026-11-20")
+  feed <- activity_json(submissions, registered, as.Date("2026-11-10"), now)
+  expect_equal(feed$schema, dashboard_data_schema)
+  kinds <- vapply(feed$events, function(e) e$type, "")
+  times <- vapply(feed$events, function(e) e$time, "")
+  expect_equal(times, sort(times, decreasing = TRUE))
+  # The baseline, the skipped file and the row with no time are left out; the
+  # failed registration, with no model id, stays.
+  files <- vapply(feed$events[kinds == "submission"], function(e) e$file, "")
+  expect_equal(files, c("lakes-2026-11-19-alpha.csv.gz", "lakes-2026-11-18-alpha.csv.gz",
+                        "lakes-2026-11-17-beta.csv.gz", "y.csv", "challenge-model.yaml"))
+  invalid <- feed$events[[2]]
+  expect_lte(nchar(invalid$reason), 160)
+  broken <- feed$events[kinds == "submission"][[5]]
+  expect_null(broken$model_id)
+  expect_equal(broken$source, "github:o/broken")
+  # The scoring event is the latest scored forecast date.
+  scored <- feed$events[kinds == "scored"][[1]]
+  expect_equal(scored$date, "2026-11-10")
+  # Without results or scores the feed is empty, and still valid.
+  empty <- activity_json(empty_events(), registered, NULL, now)
+  expect_length(empty$events, 0)
+  expect_equal(as.character(jsonlite::toJSON(empty$events, auto_unbox = TRUE)), "[]")
 })
 
 test_that("a failure to read the results warns and leaves the rest of the site alone", {

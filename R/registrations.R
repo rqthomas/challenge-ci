@@ -67,12 +67,12 @@ registration_columns <- function(cfg = list()) {
 #'
 #' Two sources are combined. The registration sheet
 #' (`model_metadata_gsheet`, see [read_sheet_models()]) lists the models
-#' registered through the form. When the challenge reads GitHub repositories
-#' (`submissions$github$registry`), each repository's `challenge-model.yaml`
-#' describes the models it submits (see [read_github_models()]). A model in
+#' registered through the form. When the challenge reads git repositories
+#' (`submissions$repos$registry`), each repository's `challenge-model.yaml`
+#' describes the models it submits (see [read_repo_models()]). A model in
 #' both takes its answers from the file, field by field, falling back to the
 #' sheet for a question the file leaves out; a model only in the file is
-#' registered by it, so GitHub participants need not fill in the form.
+#' registered by it, so participants with a repository need not fill in the form.
 #'
 #' The challenge's own baseline models (`target_groups$<group>$baselines`) are
 #' registered automatically unless they are registered already, so they appear in
@@ -81,16 +81,16 @@ registration_columns <- function(cfg = list()) {
 #'
 #' @inheritParams config_get
 #' @param sheet The registration sheet, if already read. `NULL` reads it.
-#' @param github The GitHub models from [read_github_models()], if already
-#'   read. `NULL` reads them (only when the challenge reads GitHub).
+#' @param github The repositories' models from [read_repo_models()], if already
+#'   read. `NULL` reads them (only when the challenge reads repositories).
 #' @return A tibble with the short column names of [registration_columns()]
 #'   (questions missing from the sheet are `NA` columns) and `baseline`, `TRUE`
 #'   for a baseline registered automatically.
 #' @export
 read_registered_models <- function(cfg, sheet = NULL, github = NULL) {
   models <- read_sheet_models(cfg, sheet)
-  if (github_enabled(cfg) || !is.null(github)) {
-    github <- github %||% read_github_models(cfg)
+  if (repos_enabled(cfg) || !is.null(github)) {
+    github <- github %||% read_repo_models(cfg)
     models <- merge_github_models(models, github, cfg)
   }
   add_baseline_models(models, cfg)
@@ -185,7 +185,7 @@ add_baseline_models <- function(models, cfg) {
 #' default `"example"`) and keeps one row per model: the most complete one,
 #' and the earliest of those if several are equally complete (later rows with
 #' the same id are usually accidental re-registrations). A challenge that reads
-#' GitHub repositories may leave `model_metadata_gsheet` out, and then has no
+#' git repositories may leave `model_metadata_gsheet` out, and then has no
 #' sheet models.
 #'
 #' @inheritParams read_registered_models
@@ -193,7 +193,7 @@ add_baseline_models <- function(models, cfg) {
 #' @export
 read_sheet_models <- function(cfg, sheet = NULL) {
   columns <- registration_columns(cfg)
-  if (is.null(sheet) && is.null(cfg$model_metadata_gsheet) && github_enabled(cfg)) {
+  if (is.null(sheet) && is.null(cfg$model_metadata_gsheet) && repos_enabled(cfg)) {
     sheet <- tibble::as_tibble(rlang::set_names(rep(list(character()), length(columns)),
                                                 columns))
   }
@@ -213,7 +213,7 @@ read_sheet_models <- function(cfg, sheet = NULL) {
 }
 
 # Models from the form, updated with and extended by the models described in
-# GitHub repositories: for a model in both, the file's answers win where given.
+# git repositories: for a model in both, the file's answers win where given.
 merge_github_models <- function(sheet_models, github_models, cfg) {
   columns <- setdiff(names(sheet_models), "model_id")
   example <- cfg$example_model_id %||% "example"
