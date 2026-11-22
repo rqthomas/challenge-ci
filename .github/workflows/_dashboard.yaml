@@ -21,7 +21,7 @@ env:
 
 jobs:
   config:
-    uses: eco4cast/challenge-ci/.github/workflows/_config.yaml@main
+    uses: rqthomas/challenge-ci/.github/workflows/_config.yaml@v0.1.0-rc.12
 
   dashboard:
     needs: config
@@ -70,6 +70,6 @@ jobs:
           # Back to the code branch, for the healthcheck step.
           git checkout -
 
-      - uses: eco4cast/challenge-ci/.github/actions/healthcheck@main
+      - uses: rqthomas/challenge-ci/.github/actions/healthcheck@v0.1.0-rc.12
         with:
           name: dashboard
