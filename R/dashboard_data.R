@@ -121,8 +121,9 @@ sum_scores <- function(rows, ...) {
 }
 
 # The aggregations the leaderboard pages show, from leaderboard_rows(): by
-# window, by horizon (within the middle window) and by reference date.
-leaderboard_cells <- function(rows, now, windows) {
+# window, by horizon (within the middle window), by reference date, and, for each
+# of the toggle's `horizons` (days), by window at that horizon alone.
+leaderboard_cells <- function(rows, now, windows, horizons = numeric()) {
   by_window <- purrr::map(windows, function(w) {
     since <- as.Date(now) - w
     rows |>
@@ -131,9 +132,21 @@ leaderboard_cells <- function(rows, now, windows) {
       dplyr::mutate(window = w)
   }) |>
     purrr::list_rbind()
+  by_window_horizon <- purrr::map(horizons, function(hz) {
+    purrr::map(windows, function(w) {
+      since <- as.Date(now) - w
+      rows |>
+        dplyr::filter(.data$date >= !!since, .data$horizon == !!hz) |>
+        sum_scores() |>
+        dplyr::mutate(window = w, at_horizon = hz)
+    }) |>
+      purrr::list_rbind()
+  }) |>
+    purrr::list_rbind()
   middle <- as.Date(now) - windows[2]
   list(
     window = by_window,
+    window_horizon = by_window_horizon,
     horizon = rows |>
       dplyr::filter(.data$date >= !!middle) |>
       sum_scores("horizon") |>
@@ -142,13 +155,18 @@ leaderboard_cells <- function(rows, now, windows) {
   )
 }
 
-# Skill (one minus the ratio of summed CRPS on forecasts both models made) and
-# mean CRPS from the sums of sum_scores(). NA where there is no baseline.
+# Skill = 1 - CRPS_forecast / CRPS_climatology (the baseline), where each CRPS is
+# the mean over the forecasts both made, and the plain mean CRPS, from the sums
+# of sum_scores(). NA where there is no baseline. Both means are over the same
+# n_matched forecasts, so this is also one minus the ratio of the sums.
 cell_skill <- function(cells) {
+  if (nrow(cells) == 0) return(cells)
+  mean_forecast <- cells$crps_matched / cells$n_matched
+  mean_baseline <- cells$base_matched / cells$n_matched
   dplyr::mutate(
     cells,
     skill = dplyr::if_else(.data$n_matched > 0 & .data$base_matched > 0,
-                           1 - .data$crps_matched / .data$base_matched, NA_real_),
+                           1 - mean_forecast / mean_baseline, NA_real_),
     crps = .data$crps_sum / .data$n
   )
 }
@@ -161,7 +179,8 @@ jarr <- function(x, digits = NULL) {
 }
 
 # The leaderboard file of one variable (see docs/dashboard-data.md).
-leaderboard_json <- function(variable_row, cells, windows, baseline, now, excluded = character()) {
+leaderboard_json <- function(variable_row, cells, windows, baseline, now, excluded = character(),
+                             horizons = numeric()) {
   keep <- function(df) {
     dplyr::filter(df, .data$variable == variable_row$variable,
                   !.data$model_id %in% excluded) |> cell_skill()
@@ -169,24 +188,37 @@ leaderboard_json <- function(variable_row, cells, windows, baseline, now, exclud
   w <- keep(cells$window)
   h <- keep(cells$horizon)
   t <- keep(cells$date)
+  # No horizons configured: an empty table with no columns, nothing to filter.
+  wh <- tibble::tibble()
+  if (nrow(cells$window_horizon %||% wh) > 0) wh <- keep(cells$window_horizon)
   models <- sort(unique(w$model_id))
   per_model <- purrr::map(rlang::set_names(models), function(m) {
     mw <- w[w$model_id == m, ]
     mh <- h[h$model_id == m, ] |> dplyr::arrange(.data$horizon)
     mt <- t[t$model_id == m, ] |> dplyr::arrange(.data$date)
-    list(
-      w = purrr::map(rlang::set_names(as.character(windows)), function(d) {
-        r <- mw[mw$window == as.numeric(d), ]
+    window_cells <- function(rows) {
+      purrr::map(rlang::set_names(as.character(windows)), function(d) {
+        r <- rows[rows$window == as.numeric(d), ]
         if (nrow(r) == 0) return(NULL)
         list(skill = jnum(r$skill), crps = jnum(r$crps), n = r$n, dates = r$nd)
-      }) |> purrr::compact(),
+      }) |> purrr::compact()
+    }
+    # The same cells for each horizon of the toggle, where the model forecast at it.
+    at_horizons <- purrr::map(rlang::set_names(as.character(horizons)), function(hz) {
+      if (nrow(wh) == 0) return(NULL)
+      window_cells(wh[wh$model_id == m & wh$at_horizon == as.numeric(hz), ])
+    }) |> purrr::compact()
+    list(
+      w = window_cells(mw),
+      wh = if (length(at_horizons) > 0) at_horizons,
       h = list(h = jarr(mh$horizon), skill = jarr(mh$skill, 4), crps = jarr(mh$crps, 4)),
       t = list(d = jarr(format(mt$date)), skill = jarr(mt$skill, 4), crps = jarr(mt$crps, 4))
     )
   })
   list(schema = dashboard_data_schema, variable = variable_row$id,
        baseline = if (is.na(baseline)) NULL else baseline,
-       windows = jarr(windows), updated = format_utc(now), models = per_model)
+       windows = jarr(windows), horizons = jarr(horizons), updated = format_utc(now),
+       models = per_model)
 }
 
 format_utc <- function(x) format(as.POSIXct(x, tz = "UTC"), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
@@ -465,7 +497,8 @@ dashboard_meta <- function(cfg, variables, baselines, stats, now, publish_result
     }) |> unname(),
     datasets = dashboard_datasets(cfg, variables, publish_results),
     leaderboard_max_horizon = settings$leaderboard_max_horizon,
-    min_forecasts = settings$min_forecasts
+    min_forecasts = settings$min_forecasts,
+    horizons = as.list(dashboard_horizons(cfg))
   )
 }
 
@@ -478,10 +511,12 @@ stage_results <- function(cfg, out_dir, keep = 50) {
   folder <- bucket_uri(cfg, "forecasts_bucket", "submission_results", scheme = "remote")
   # The results are optional: a challenge that has published none has no folder,
   # and a failure must not stop the dashboard, but it must not pass unnoticed.
-  files <- tryCatch(remote_files(folder), error = function(e) {
+  # remote_files() gives a tibble; `key` is the file name inside the folder.
+  listing <- tryCatch(remote_files(folder), error = function(e) {
     cli::cli_warn("Could not list the published submission results: {conditionMessage(e)}")
-    character()
+    NULL
   })
+  files <- as.character(listing$key)
   files <- files[grepl("\\.csv$", files)]
   index <- list()
   events <- list()

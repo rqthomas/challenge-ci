@@ -302,7 +302,7 @@ test_that("submission results are staged per model with a lookup index", {
       first_seen = "2026-01-03T00:00:00Z", status = "registration_invalid",
       reason = "no models", warnings = NA_character_))
   testthat::local_mocked_bindings(
-    remote_files = function(path) c("m1.csv", "github_7.csv", "notes.txt"),
+    remote_files = function(path) remote_listing(c("m1.csv", "github_7.csv", "notes.txt")),
     read_published_results = function(remote) published[[sub("[.]csv$", "", basename(remote))]])
   out <- withr::local_tempdir()
   stage_results(cfg, out)
@@ -325,13 +325,13 @@ test_that("stage_results() returns the outcomes of every model for the activity 
     model_id = "m1", file = "a.csv", source = "github:org/repo", first_seen = "2026-01-01T00:00:00Z",
     status = "processed", reason = NA_character_, warnings = NA_character_))
   testthat::local_mocked_bindings(
-    remote_files = function(path) "m1.csv",
+    remote_files = function(path) remote_listing("m1.csv"),
     read_published_results = function(remote) published$m1)
   events <- stage_results(dashboard_test_config(), withr::local_tempdir())
   expect_equal(names(events), event_columns)
   expect_equal(events$model_id, "m1")
   # Nothing published: no rows, but the same columns.
-  testthat::local_mocked_bindings(remote_files = function(path) character())
+  testthat::local_mocked_bindings(remote_files = function(path) remote_listing(character()))
   none <- stage_results(dashboard_test_config(), withr::local_tempdir())
   expect_equal(names(none), event_columns)
   expect_equal(nrow(none), 0)
@@ -384,4 +384,87 @@ test_that("a failure to read the results warns and leaves the rest of the site a
   expect_warning(stage_results(dashboard_test_config(), out), "Could not list")
   index <- jsonlite::read_json(file.path(out, "results", "index.json"))
   expect_length(index$results, 0)
+})
+
+test_that("skill is 1 - CRPS_forecast / CRPS_climatology, from means over the same forecasts", {
+  cells <- tibble::tibble(
+    model_id = c("m", "none"), variable = "temperature",
+    n = c(10, 5), n_matched = c(4, 0),
+    crps_sum = c(30, 5), crps_matched = c(6, 0), base_matched = c(8, 0)
+  )
+  out <- cell_skill(cells)
+  # Mean CRPS of the forecast (6 / 4) over that of climatology (8 / 4): 1 - 1.5 / 2.
+  expect_equal(out$skill[1], 1 - (6 / 4) / (8 / 4))
+  expect_equal(out$skill[1], 0.25)
+  # The plain mean CRPS is over all of the model's scores.
+  expect_equal(out$crps[1], 3)
+  # No forecasts in common with the baseline: no skill.
+  expect_true(is.na(out$skill[2]))
+})
+
+test_that("the horizon toggle's cells use only forecasts made that far ahead", {
+  skip_if_not_installed("arrow")
+  now <- utc("2024-06-30")
+  baselines <- tibble::tibble(variable = "temperature", duration = "P1D",
+                              baseline_model = "climatology")
+  rows <- leaderboard_rows(lazy_table(fake_scores(now)), baselines, now, c(7, 30, 90), 35)
+  cells <- leaderboard_cells(rows, now, c(7, 30, 90), horizons = c(1, 2))
+
+  wh <- cell_skill(cells$window_horizon)
+  a <- function(horizon, window) wh[wh$model_id == "a" & wh$at_horizon == horizon & wh$window == window, ]
+  # 10 days x 2 sites at each horizon in the 90-day window, and the unmatched extra row at 1.
+  expect_equal(a(2, 90)$n, 20)
+  expect_equal(a(1, 90)$n, 21)
+  expect_equal(a(1, 90)$crps, (20 * 1 + 100) / 21)
+  expect_equal(a(1, 90)$skill, 0.5)
+  expect_equal(a(2, 7)$nd, 7)
+  expect_equal(wh$skill[wh$model_id == "c" & wh$at_horizon == 2 & wh$window == 30], -1)
+  # Horizon 3 was not asked for.
+  expect_setequal(wh$at_horizon, c(1, 2))
+  # Without horizons there is nothing extra, and the other cells are unchanged.
+  none <- leaderboard_cells(rows, now, c(7, 30, 90))
+  expect_equal(nrow(none$window_horizon), 0)
+  by_model <- function(x) dplyr::arrange(x, .data$model_id, .data$window)
+  expect_equal(by_model(none$window), by_model(cells$window))
+
+  v <- list(id = "temperature_P1D", variable = "temperature")
+  board <- leaderboard_json(v, cells, c(7, 30, 90), "climatology", now, excluded = "c",
+                            horizons = c(1, 2))
+  expect_equal(unlist(board$horizons), c(1, 2))
+  expect_equal(board$models$a$wh[["2"]][["30"]]$n, 20)
+  expect_equal(board$models$a$wh[["1"]][["30"]]$skill, 0.5)
+  plain <- leaderboard_json(v, none, c(7, 30, 90), "climatology", now, excluded = "c")
+  expect_length(plain$horizons, 0)
+  expect_null(plain$models$a$wh)
+  json <- jsonlite::toJSON(board, auto_unbox = TRUE, null = "null", na = "null", digits = NA)
+  expect_match(as.character(json), '"horizons":[1,2]', fixed = TRUE)
+})
+
+test_that("dashboard$horizons is two whole numbers of days, sorted", {
+  expect_equal(dashboard_horizons(list(dashboard = list(horizons = c(7, 1)))), c(1, 7))
+  expect_equal(dashboard_horizons(list(dashboard = list(horizons = list(14, 3)))), c(3, 14))
+  expect_length(dashboard_horizons(list()), 0)
+
+  cfg <- test_config()
+  errors <- function(horizons) {
+    cfg$dashboard$horizons <- horizons
+    p <- config_problems(cfg)
+    p$message[p$severity == "error" & p$key == "dashboard$horizons"]
+  }
+  expect_length(errors(c(1, 7)), 0)
+  expect_length(errors(NULL), 0)
+  for (bad in list(7, c(1, 7, 14), c(7, 7), c(0, 7), c(1.5, 7), c("a", "b"))) {
+    expect_match(errors(bad), "two different whole numbers", info = deparse(bad))
+  }
+})
+
+test_that("the meta file carries the toggle's horizons", {
+  cfg <- dashboard_test_config()
+  cfg$dashboard$horizons <- c(7, 1)
+  meta <- dashboard_meta(cfg, dashboard_test_variables(cfg), skill_baselines(cfg),
+                         list(), utc("2024-06-30"))
+  expect_equal(unlist(meta$horizons), c(1, 7))
+  cfg$dashboard$horizons <- NULL
+  expect_length(dashboard_meta(cfg, dashboard_test_variables(cfg), skill_baselines(cfg),
+                               list(), utc("2024-06-30"))$horizons, 0)
 })

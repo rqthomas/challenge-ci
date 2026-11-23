@@ -57,7 +57,7 @@ variables[] {id, variable, duration, group, long_name, description, label,
 sites[]     {site_id, site_name, latitude, longitude, groups[]}
 groups[]    {name, theme, focal_sites[], plot_sites[]}
 datasets[]  {id, name, about, format, urls[], public, columns[{name, type, text}]}
-leaderboard_max_horizon, min_forecasts
+leaderboard_max_horizon, min_forecasts, horizons
 ```
 
 - `access.public_read` is false for a private bucket. A dataset's `public` says
@@ -72,18 +72,23 @@ leaderboard_max_horizon, min_forecasts
 ### `leaderboard/<id>.json`
 
 ```text
-schema, variable, baseline?, windows[3], updated
+schema, variable, baseline?, windows[3], horizons[] (the toggle's lead times, days), updated
 models   { <model_id>: {
    w {"<days>": {skill, crps, n, dates}}   one entry per window
+   wh {"<horizon>": {"<days>": {...}}}     the same cells at one horizon alone, for each
+                                           of `horizons`; absent when none is configured
    h {h[], skill[], crps[]}                by horizon (days), in the middle window
    t {d[], skill[], crps[]}                by forecast date, in the longest window
 }}
 ```
 
-- **Skill** is `1 - sum(crps of the model) / sum(crps of the baseline)` over
-  the forecasts (site, reference time and valid time) that both made, so a
-  model is compared with the baseline only where the baseline forecast too.
-  Zero is as good as the baseline; one is no error. It is `null` when there is
+- **Skill** is `1 - CRPS_forecast / CRPS_climatology`, where each CRPS is the
+  mean over the forecasts (site, reference time and valid time) that both the
+  model and the baseline made, so a model is compared with the baseline only
+  where the baseline forecast too. (`climatology` stands for the variable's
+  baseline: `weekly_climatology` for weekly variables, or
+  `dashboard$skill_baseline`.) Zero is as good as the baseline, one is no error
+  and a negative value is worse than the baseline. It is `null` when there is
   no baseline or no overlap. The baseline's own skill is 0.
 - `crps` is the mean CRPS over all of the model's forecasts in the window, `n`
   the number of scores (site, reference time and lead time) and `dates` the

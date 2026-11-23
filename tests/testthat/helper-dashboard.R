@@ -25,3 +25,10 @@ dashboard_test_variables <- function(cfg) {
                              description = paste("About", vars$variable))
   dashboard_variables(cfg, metadata)
 }
+
+# What remote_files() really returns: a tibble, not a vector of names. (Mocking it
+# as a character vector once hid a bug that left the results empty.)
+remote_listing <- function(keys, folder = "main/test-bucket/forecasts/submission_results") {
+  tibble::tibble(path = file.path(folder, keys), key = keys,
+                 bytes = rep(1, length(keys)), etag = rep("e", length(keys)))
+}

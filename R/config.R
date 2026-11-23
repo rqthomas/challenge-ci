@@ -258,6 +258,15 @@ config_problems <- function(cfg) {
     add("error", "submissions$baselines_destination",
         paste0("must be one of ", paste(baseline_destinations, collapse = ", ")))
   }
+  horizons <- cfg$dashboard$horizons
+  if (!is.null(horizons)) {
+    days <- suppressWarnings(as.numeric(unlist(horizons)))
+    if (length(days) != 2 || anyNA(days) || any(days <= 0) || any(days != round(days)) ||
+          days[1] == days[2]) {
+      add("error", "dashboard$horizons",
+          "must be two different whole numbers of days, such as [1, 7]")
+    }
+  }
   strict_from <- cfg$submissions$bucket$strict_from
   if (!is.null(strict_from) &&
         is.na(tryCatch(as.Date(as.character(strict_from), format = "%Y-%m-%d"),

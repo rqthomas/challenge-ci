@@ -97,6 +97,9 @@ DRY_RUN=true Rscript -e 'challengeci::run_stage()' <stage>   # from a challenge 
 - The processed record and the unit record are written in batches by `flush_state` in `R/submissions.R`;
   bucket deletes must come after a successful record write, and a failed source still
   flushes what it did.
+- `remote_files()` returns a tibble (`path`, `key`, ...), not names: use `$key`, and mock it
+  with the `remote_listing` helper in tests. A mock that returns a character vector once hid a stage
+  that silently read nothing.
 - `dplyr::bind_rows(named_list, df)` treats the list as columns; use
   `bind_rows(c(unname(list), list(df)))`.
 

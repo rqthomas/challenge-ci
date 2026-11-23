@@ -54,6 +54,22 @@ dashboard_settings <- function(cfg) {
   settings
 }
 
+#' The two horizons of the leaderboard's horizon toggle
+#'
+#' `dashboard$horizons` lists two lead times, in days, for the leaderboard to be
+#' restricted to (in addition to "all horizons"). A horizon of 7 keeps only the
+#' forecasts made 7 days ahead. Not set: no toggle.
+#'
+#' @inheritParams config_get
+#' @return A sorted numeric vector of the horizons: none, or two.
+#' @export
+#' @examples
+#' dashboard_horizons(list(dashboard = list(horizons = c(7, 1))))
+dashboard_horizons <- function(cfg) {
+  horizons <- suppressWarnings(as.numeric(unlist(cfg$dashboard$horizons)))
+  sort(unique(horizons[!is.na(horizons)]))
+}
+
 #' How far back the dashboard looks for a duration
 #'
 #' Weekly and longer variables are observed slowly, so their leaderboards
@@ -178,7 +194,7 @@ write_dashboard_data <- function(cfg, out_dir, now, inputs, observations, regist
     if (!is.null(scores)) {
       rows <- leaderboard_rows(scores, dplyr::filter(baselines, .data$duration == !!duration),
                                now, windows, settings$leaderboard_max_horizon, conn)
-      cells <- leaderboard_cells(rows, now, windows)
+      cells <- leaderboard_cells(rows, now, windows, dashboard_horizons(cfg))
     }
 
     for (i in seq_len(nrow(vars))) {
@@ -188,9 +204,10 @@ write_dashboard_data <- function(cfg, out_dir, now, inputs, observations, regist
                                          baselines$duration == v$duration]
       board <- if (is.null(cells)) {
         list(schema = dashboard_data_schema, variable = v$id, windows = jarr(windows),
+             horizons = jarr(dashboard_horizons(cfg)),
              updated = format_utc(now), models = structure(list(), names = character()))
       } else {
-        leaderboard_json(v, cells, windows, base, now, excluded)
+        leaderboard_json(v, cells, windows, base, now, excluded, dashboard_horizons(cfg))
       }
       write_dashboard_json(board, file.path(out_dir, "leaderboard", paste0(v$id, ".json")))
       for (m in names(board$models)) {

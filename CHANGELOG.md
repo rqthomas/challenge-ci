@@ -58,6 +58,10 @@ optional and the defaults keep today's behaviour.
   no rows for the challenge is recorded as skipped and looked at again if it is
   edited. The published results gain `rows_kept` and `rows_dropped`, and `source`
   is now `host/owner/name`.
+- The leaderboard has a *Horizon* toggle: "All horizons" plus two lead times, in
+  days, set in `dashboard$horizons` (for example `[1, 7]`). The leaderboard
+  files gain `horizons` and, per model, `wh` (the window cells at each horizon);
+  `meta.json` gains `horizons`. Not set: no toggle.
 - The registration issue form asks for the repository (any host) and where the
   forecasts go; copy the new `inst/issue_forms/register-forecast-repo.yml`.
 - The `submissions` stage publishes what happened to each file, for the bucket
