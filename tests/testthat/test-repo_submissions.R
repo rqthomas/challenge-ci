@@ -379,3 +379,17 @@ test_that("published models that no repository claims are listed for an invitati
   expect_equal(names(out), c("model_id", "contact_name", "code_url"))
   expect_true(all(is.na(out$code_url)))
 })
+
+test_that("a repository model is kept when its id contains 'example'; a form model is not", {
+  mock_git(yaml = paste0("challenge: testcast\nmodels:\n  - model_id: example_lake_model\n",
+                         "    long_name: Example lake model\n    description: A demo\n"))
+  cfg <- github_cfg()
+  github <- read_repo_models(cfg, repo_row("github.com/alice/forecasts"))
+  # sheet_fixture() has a form row called example-x: that one is still dropped.
+  models <- read_registered_models(cfg, sheet = sheet_fixture(cfg), github = github)
+  models <- models[!models$baseline, ]
+  expect_true("example_lake_model" %in% models$model_id)
+  expect_false("example-x" %in% models$model_id)
+  expect_equal(models$long_name[models$model_id == "example_lake_model"], "Example lake model")
+  expect_equal(models$description[models$model_id == "example_lake_model"], "A demo")
+})

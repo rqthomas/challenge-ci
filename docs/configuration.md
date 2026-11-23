@@ -37,7 +37,7 @@ the stages that read it today. A stage is one of the workflows (`submissions`,
 | `challenge_long_name` | | Full name, shown in the catalog and on the dashboard (and its title, unless `dashboard$title` is set). | catalog, dashboard |
 | `github_repo` | | `owner/repo` of this repository. The dashboard links to it; the catalog uses it when `catalog_config$catalog_repo` is not set. | catalog, dashboard |
 | `challenge_url` | | Public dashboard URL. Quarto builds the sitemap from it; the catalog links to it for models registered without a code link. | catalog, dashboard |
-| `example_model_id` | | Text that marks test models, default `example`. Registered models whose id contains it get no catalog entry or metadata record. | catalog |
+| `example_model_id` | | Text that marks test models, default `example`. Models registered through the form whose id contains it get no catalog entry or metadata record. (A model described in a repository's `challenge-model.yaml` is always kept.) | catalog |
 
 ## Storage
 

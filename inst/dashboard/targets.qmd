@@ -65,11 +65,13 @@ render_tabs(purrr::map(groups, function(group) {
   list(
     title = group,
     text = c(prose, "", md(table), "",
-             "The target file is at the following URL. You can load it directly into R:", "",
-             "```r",
-             paste0('url <- "', url, '"'),
-             "targets <- readr::read_csv(url, show_col_types = FALSE)",
-             "```", "",
+             "The target file is at the following URL:", "",
+             paste0("[`", url, "`](", url, ")"), "",
+             "Read it with the code below (the same as on the [Data](data.html) page):", "",
+             # The code is drawn in the browser (js/snippets.js), as on the Data page:
+             # open buckets are read directly, private ones with a key from the environment.
+             paste0('<div data-read-targets data-url="', gsub('"', "&quot;", url, fixed = TRUE), '"></div>'),
+             "",
              "The file contains the following columns:", "",
              md(utils::head(stats::na.omit(targets))), "",
              "and the time series at the focal sites:", "", chart),

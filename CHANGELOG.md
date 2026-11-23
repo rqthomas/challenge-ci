@@ -58,6 +58,12 @@ optional and the defaults keep today's behaviour.
   no rows for the challenge is recorded as skipped and looked at again if it is
   edited. The published results gain `rows_kept` and `rows_dropped`, and `source`
   is now `host/owner/name`.
+- The Targets page shows the same code for reading a target file as the Data page (R,
+  Python or command line): a direct read for a public bucket, and the key from
+  `S3_KEY` and `S3_SECRET` only for a private one.
+- A model described in a repository's `challenge-model.yaml` is kept in the registered
+  models (catalog and dashboard) even when its id contains `example_model_id`; that rule
+  now applies only to models registered through the form.
 - The leaderboard has a *Horizon* toggle: "All horizons" plus two lead times, in
   days, set in `dashboard$horizons` (for example `[1, 7]`). The leaderboard
   files gain `horizons` and, per model, `wh` (the window cells at each horizon);

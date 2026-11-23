@@ -216,9 +216,9 @@ read_sheet_models <- function(cfg, sheet = NULL) {
 # git repositories: for a model in both, the file's answers win where given.
 merge_github_models <- function(sheet_models, github_models, cfg) {
   columns <- setdiff(names(sheet_models), "model_id")
-  example <- cfg$example_model_id %||% "example"
-  github_models <- github_models[!grepl(example, github_models$model_id, fixed = TRUE), ]
-
+  # The example-model rule (`example_model_id`) is for the registration form, where
+  # test models are filed; a model described in a repository's challenge-model.yaml
+  # is registered on purpose, so it is kept whatever its id.
   both <- match(sheet_models$model_id, github_models$model_id)
   for (col in columns) {
     sheet_models[[col]] <- dplyr::coalesce(github_models[[col]][both], sheet_models[[col]])
