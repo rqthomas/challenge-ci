@@ -25,7 +25,7 @@ are deleted (\code{bucket$delete_processed}), baseline forecasts go
 through it (\code{baselines_destination}), published results keep
 200 rows per model, and contributors' git repositories are read with files up to
 100 MB, at most 100 new files per repository per run, only from
-github.com, gitlab.com, bitbucket.org and codeberg.org, and registered by
+github.com, gitlab.com, bitbucket.org, codeberg.org and huggingface.co, and registered by
 hand unless \code{issue_registration} is on. The repository source
 itself is off until \code{submissions$repos$registry} is set. (The old name of
 \code{submissions$repos} is \code{submissions$github}; it is still read.)

@@ -25,4 +25,4 @@ runs:
         REPO: ${{ inputs.repo }}
         BRANCH: ${{ inputs.branch }}
         DIR: ${{ inputs.dir }}
-      run: bash "${{ github.action_path }}/clone.sh"
+      run: bash "$GITHUB_ACTION_PATH/clone.sh"

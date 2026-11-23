@@ -33,7 +33,7 @@ results_url <- challengeci::bucket_uri(cfg, "forecasts_bucket", "submission_resu
 if (use_github) {
   cat(if (use_bucket) '#### From a git repository\n' else '',
       '
-Every model has a **public** repository, on GitHub, GitLab, Bitbucket or Codeberg, that describes it. Nothing needs to be uploaded: we read new forecast files from the repository.
+Every model has a **public** repository, on GitHub, GitLab, Bitbucket, Codeberg or Hugging Face, that describes it. Nothing needs to be uploaded: we read new forecast files from the repository.
 
 1)  Add a file named `challenge-model.yaml` at the top of the repository that says which models it submits for this challenge, and describes them (the questions of the [registration form](', settings$registration_form_url, ') are the other keys, answered the same way; leave out any you do not want to answer):
 

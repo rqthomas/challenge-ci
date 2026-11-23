@@ -205,7 +205,8 @@ test_that("a file over the size limit or a Git LFS pointer is invalid", {
   expect_match(res$reason, "larger than")
 
   pointer <- file.path(withr::local_tempdir(), "lakes-2024-03-01-my-model.csv")
-  writeLines(c("version https://git-lfs.github.com/spec/v1", "oid sha256:ab", "size 9"), pointer)
+  writeLines(c("version https://git-lfs.github.com/spec/v1",
+               paste0("oid sha256:", strrep("ab", 32)), "size 9"), pointer)
   res <- process_submission(pointer, test_config(), withr::local_tempdir())
   expect_match(res$reason, "Git LFS")
 })

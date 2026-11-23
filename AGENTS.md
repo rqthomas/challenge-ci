@@ -87,6 +87,13 @@ DRY_RUN=true Rscript -e 'challengeci::run_stage()' <stage>   # from a challenge 
   in a partial clone (it fetches every blob), and clone `https://host/owner/name.git`
   (GitLab redirects every request without `.git`). Tests use local bare repos with
   `options(challengeci.git_protocols = c("https", "file"))`.
+- In a composite action, use `$GITHUB_ACTION_PATH` in `run:`, never `${{ github.action_path }}`:
+  the workflows run in a container, where the expression is the host path and the script
+  is "No such file or directory".
+- A file in a git repository may be a Git LFS pointer (Hugging Face makes every `*.gz`
+  and `*.parquet` one): `git_blob` resolves it through the host's LFS API, and an
+  unresolved pointer is `invalid`, never parsed as a forecast. Compare `sha256`
+  results with `as.vector()`: `as.character()` of an openssl hash keeps its class.
 - The processed record and the unit record are written in batches by `flush_state` in `R/submissions.R`;
   bucket deletes must come after a successful record write, and a failed source still
   flushes what it did.

@@ -120,3 +120,16 @@ test_that("an unreachable repository stops the run instead of starting an empty 
   expect_true(result$status != 0)
   expect_false(dir.exists(dir))
 })
+
+test_that("composite actions find their scripts through $GITHUB_ACTION_PATH", {
+  # The workflows run in a container, where the expression github.action_path is the
+  # runner's host path (/home/runner/work/_actions/...) and does not exist; the
+  # environment variable is the path inside the container.
+  dir <- test_path("..", "..", ".github", "actions")
+  skip_if_not(dir.exists(dir), "not running inside the repository")
+  for (f in list.files(dir, "action\\.ya?ml$", recursive = TRUE, full.names = TRUE)) {
+    expect_false(any(grepl("github.action_path", readLines(f), fixed = TRUE)), info = f)
+  }
+  clone <- paste(readLines(file.path(dir, "catalog-clone", "action.yml")), collapse = "\n")
+  expect_match(clone, 'bash "$GITHUB_ACTION_PATH/clone.sh"', fixed = TRUE)
+})

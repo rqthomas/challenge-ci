@@ -13,6 +13,11 @@
 # downloaded file. And a repository is identified by its address
 # (`host/owner/name`), not by a numeric id that survives renames.
 #
+# Hugging Face (and any repository that uses Git LFS) stores large and
+# compressed files as small pointer files. A pointer is resolved through the
+# host's public Git LFS download API (see git_lfs_download()), so a
+# `forecast.csv.gz` on huggingface.co is read like any other file.
+#
 # The registry comes from public issue text, so everything that reaches git is
 # checked first: https only, a host on the allowlist
 # (`submissions$repos$allowed_hosts`), no prompts, no credential helpers, no
@@ -125,7 +130,7 @@ git_open <- function(url, timeout = 120) {
     if (git_status(res) != 0L || length(res) == 0) NA_character_ else res[1]
   }
   list(dir = dir, branch = one(c("rev-parse", "--abbrev-ref", "HEAD")),
-       commit = one(c("rev-parse", "HEAD")))
+       commit = one(c("rev-parse", "HEAD")), url = url)
 }
 
 git_close <- function(handle) {
@@ -151,8 +156,10 @@ git_tree <- function(handle) {
 }
 
 # Fetch one file by its blob SHA (a blob never changes, so this is exactly the
-# file that was listed even if the branch has moved on).
-git_blob <- function(handle, sha, dest, timeout = 300) {
+# file that was listed even if the branch has moved on). A Git LFS pointer is
+# replaced by the file it stands for, unless that file is bigger than
+# `max_bytes`, when the pointer is left for process_submission() to report.
+git_blob <- function(handle, sha, dest, timeout = 300, max_bytes = Inf) {
   stopifnot(grepl("^[0-9a-f]{40,64}$", sha))
   dir.create(dirname(dest), recursive = TRUE, showWarnings = FALSE)
   status <- git_status(git_run(c("cat-file", "blob", sha), dir = handle$dir, stdout = dest,
@@ -162,6 +169,10 @@ git_blob <- function(handle, sha, dest, timeout = 300) {
     reason <- if (status == 124L) "timed out" else "failed"
     cli::cli_abort("could not fetch file {.val {sha}} ({reason})")
   }
+  pointer <- lfs_pointer(dest)
+  if (!is.null(pointer) && pointer$size <= max_bytes) {
+    git_lfs_download(handle$url, pointer, dest, timeout = timeout)
+  }
   invisible(dest)
 }
 
@@ -169,18 +180,91 @@ git_blob <- function(handle, sha, dest, timeout = 300) {
 git_text <- function(handle, sha, max_bytes = 1e6) {
   path <- tempfile()
   on.exit(unlink(path))
-  git_blob(handle, sha, path)
+  git_blob(handle, sha, path, max_bytes = max_bytes)
   if (file.size(path) > max_bytes) {
     cli::cli_abort("the file is larger than {round(max_bytes / 1e6)} MB")
   }
   paste(readLines(path, warn = FALSE), collapse = "\n")
 }
 
-# Git LFS stores a large file as a small text pointer in the repository. Such a
-# pointer is not the forecast, and cannot be fetched without LFS.
-is_lfs_pointer <- function(path) {
-  if (file.size(path) > 1024) return(FALSE)
-  first <- tryCatch(readLines(path, n = 1, warn = FALSE), error = function(e) "")
-  pointer <- "version https://git-lfs.github.com/spec"
-  length(first) == 1 && !is.na(first) && startsWith(first, pointer)
+# Git LFS stores a large file as a small text pointer in the repository:
+#   version https://git-lfs.github.com/spec/v1
+#   oid sha256:<64 hex digits>
+#   size <bytes>
+# Returns list(oid, size) for a pointer file, NULL for anything else.
+lfs_pointer <- function(path) {
+  if (file.size(path) > 1024) return(NULL)
+  lines <- tryCatch(readLines(path, n = 5, warn = FALSE), error = function(e) character())
+  if (length(lines) < 3 || !startsWith(lines[1], "version https://git-lfs.github.com/spec")) {
+    return(NULL)
+  }
+  oid <- sub("^oid sha256:([0-9a-f]{64})$", "\\1", lines[grepl("^oid sha256:", lines)])
+  size <- sub("^size ([0-9]+)$", "\\1", lines[grepl("^size ", lines)])
+  if (length(oid) != 1 || !grepl("^[0-9a-f]{64}$", oid) || length(size) != 1 ||
+        !grepl("^[0-9]+$", size)) {
+    return(NULL)
+  }
+  list(oid = oid, size = as.numeric(size))
+}
+
+is_lfs_pointer <- function(path) !is.null(lfs_pointer(path))
+
+# Download the file a Git LFS pointer stands for, through the host's Git LFS
+# batch API, which serves public repositories without a credential (GitHub,
+# GitLab, Bitbucket, Codeberg and Hugging Face all do). The host answers with a
+# download address, usually on its storage or CDN, which must be https. The file
+# is checked against the pointer's size and SHA-256.
+git_lfs_download <- function(url, pointer, dest, timeout = 300) {
+  if (is.null(url)) {
+    cli::cli_abort("cannot resolve a Git LFS pointer without the repository address")
+  }
+  lfs <- "application/vnd.git-lfs+json"
+  batch <- httr2::request(paste0(sub("/+$", "", url), "/info/lfs/objects/batch")) |>
+    httr2::req_headers(Accept = lfs, `Content-Type` = lfs) |>
+    httr2::req_user_agent("challengeci (https://github.com/eco4cast/challenge-ci)") |>
+    httr2::req_timeout(60) |>
+    httr2::req_retry(max_tries = 3) |>
+    httr2::req_body_json(list(operation = "download", transfers = list("basic"),
+                              objects = list(list(oid = pointer$oid, size = pointer$size)))) |>
+    httr2::req_error(is_error = function(resp) FALSE) |>
+    httr2::req_perform()
+  answer <- tryCatch(httr2::resp_body_json(batch), error = function(e) list())
+  object <- answer$objects[[1]]
+  refused <- httr2::resp_status(batch) >= 400 || !is.null(object$error) ||
+    is.null(object$actions$download)
+  if (refused) {
+    reason <- object$error$message %||% answer$message %||%
+      paste("HTTP", httr2::resp_status(batch))
+    cli::cli_abort("the host would not serve the Git LFS file ({reason})")
+  }
+  action <- object$actions$download
+  if (!grepl("^https://", action$href)) {
+    cli::cli_abort("the host gave a Git LFS download address that is not https")
+  }
+  # Into a new file first: the pointer stays in `dest` unless the real file is good.
+  fetched <- tempfile()
+  on.exit(unlink(fetched), add = TRUE)
+  lfs_fetch_file(action$href, action$header %||% list(), fetched, timeout)
+  digest <- local({
+    con <- file(fetched, "rb")
+    on.exit(close(con))
+    # (as.character() keeps the "hash" class, which identical() would see.)
+    as.vector(as.character(openssl::sha256(con)))
+  })
+  if (file.size(fetched) != pointer$size || !identical(digest, pointer$oid)) {
+    cli::cli_abort("the Git LFS file did not match its pointer (size or SHA-256)")
+  }
+  file.copy(fetched, dest, overwrite = TRUE)
+  invisible(dest)
+}
+
+# The download itself (a function of its own so that tests can stand in for it).
+lfs_fetch_file <- function(href, headers, path, timeout) {
+  httr2::request(href) |>
+    httr2::req_headers(!!!headers) |>
+    httr2::req_user_agent("challengeci (https://github.com/eco4cast/challenge-ci)") |>
+    httr2::req_timeout(timeout) |>
+    httr2::req_retry(max_tries = 3) |>
+    httr2::req_perform(path = path)
+  invisible(path)
 }

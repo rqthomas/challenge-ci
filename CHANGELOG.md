@@ -24,12 +24,16 @@ This release is therefore a major one. Apart from the rename, every new key is
 optional and the defaults keep today's behaviour.
 
 - Submissions can also be read from contributors' public git repositories (any
-  host: GitHub, GitLab, Bitbucket, Codeberg, or others on
+  host: GitHub, GitLab, Bitbucket, Codeberg, Hugging Face, or others on
   `submissions$repos$allowed_hosts`), alongside the submissions bucket:
   `submissions$repos$registry` turns it on (`submissions$github` is read as the
   old name), and contributors describe their models in `challenge-model.yaml`.
   Repositories are read with anonymous, shallow, blob-less git clones. See
   "Submissions from git repositories" in `docs/operations.md`.
+- Git LFS files (everything Hugging Face stores as `*.gz` or `*.parquet`, or over
+  10 MB) are fetched through the host's public LFS API and checked against their
+  pointer, so a `forecast.csv.gz` in a Hugging Face repository is read like any
+  other file. `openssl` is now an import.
 - Every model has a repository; the registry's `location` column (`repo` or
   `bucket`) says whether its forecasts come from the repository or the
   submissions bucket. A bucket file is processed only for a model registered for

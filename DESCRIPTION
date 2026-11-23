@@ -23,6 +23,7 @@ Imports:
     duckdbfs,
     httr2,
     jsonlite,
+    openssl,
     lubridate,
     paws.storage (>= 0.11.0),
     purrr,

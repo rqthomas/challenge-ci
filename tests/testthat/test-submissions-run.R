@@ -67,7 +67,7 @@ mock_run <- function(env = parent.frame()) {
     git_text = function(handle, sha, max_bytes = 1e6) {
       if (handle$commit == "alice") alice_yaml else bob_yaml
     },
-    git_blob = function(handle, sha, dest, timeout = 300) {
+    git_blob = function(handle, sha, dest, timeout = 300, max_bytes = Inf) {
       readr::write_csv(three_sites("alice-model"), dest)
     },
     .env = env

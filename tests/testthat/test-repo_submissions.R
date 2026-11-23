@@ -197,7 +197,7 @@ test_that("repository submissions are processed, recorded and reported", {
   withr::local_envvar(DRY_RUN = "true", DRY_RUN_DIR = withr::local_tempdir())
   mock_git()
   testthat::local_mocked_bindings(
-    git_blob = function(handle, sha, dest, timeout = 300) {
+    git_blob = function(handle, sha, dest, timeout = 300, max_bytes = Inf) {
       day <- c("sha-forecasts/2026-01-01.csv.gz" = 0, "sha-forecasts/2026-01-02.csv.gz" = 1,
                "sha-forecasts/anything.csv" = 2)[[sha]]
       readr::write_csv(forecast_on(day), dest)
@@ -343,15 +343,6 @@ test_that("git reads a real repository: files by SHA, no checkout, no sizes", {
   # Without the protocol allowed, nothing is cloned.
   withr::local_options(challengeci.git_protocols = "https")
   expect_error(git_open(paste0("file://", src)), "could not be cloned")
-})
-
-test_that("a Git LFS pointer is recognised", {
-  pointer <- withr::local_tempfile()
-  writeLines(c("version https://git-lfs.github.com/spec/v1", "oid sha256:abc", "size 123"), pointer)
-  expect_true(is_lfs_pointer(pointer))
-  csv <- withr::local_tempfile()
-  writeLines(c("a,b", "1,2"), csv)
-  expect_false(is_lfs_pointer(csv))
 })
 
 test_that("a challenge-model.yaml is drafted from the form's answers", {

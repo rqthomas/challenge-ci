@@ -72,7 +72,7 @@ read_config <- function(path = config_path(), validate = TRUE) {
 #'   through it (`baselines_destination`), published results keep
 #'   200 rows per model, and contributors' git repositories are read with files up to
 #'   100 MB, at most 100 new files per repository per run, only from
-#'   github.com, gitlab.com, bitbucket.org and codeberg.org, and registered by
+#'   github.com, gitlab.com, bitbucket.org, codeberg.org and huggingface.co, and registered by
 #'   hand unless `issue_registration` is on. The repository source
 #'   itself is off until `submissions$repos$registry` is set. (The old name of
 #'   `submissions$repos` is `submissions$github`; it is still read.)
@@ -99,7 +99,7 @@ config_defaults <- function() {
       repos = list(max_file_mb = 100, max_files_per_repo = 100,
                    issue_registration = FALSE,
                    allowed_hosts = c("github.com", "gitlab.com", "bitbucket.org",
-                                     "codeberg.org"))
+                                     "codeberg.org", "huggingface.co"))
     ),
     sites = list(
       columns = list(site_id = "field_site_id",

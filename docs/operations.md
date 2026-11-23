@@ -260,13 +260,31 @@ its `location` column:
 | `repo` (default) | the repository's forecast folder | model description and forecasts |
 | `bucket` | the submissions bucket, files named `<theme>-<YYYY-MM-DD>-<model_id>.csv[.gz]` | model description only |
 
-**Any git host.** The repository can be on GitHub, GitLab, Bitbucket, Codeberg or
-any server on `submissions$repos$allowed_hosts`. Each repository is read with
+**Any git host.** The repository can be on GitHub, GitLab, Bitbucket, Codeberg,
+Hugging Face or any server on `submissions$repos$allowed_hosts`. Each repository is read with
 plain git: an anonymous, shallow clone that fetches the file list and no files,
 then each new file by its SHA (tested on all four hosts above). In the registry,
 `owner/name` means GitHub; any other host is written as
 `https://gitlab.com/group/name`. A private repository cannot be cloned
-anonymously and is reported as unreachable. Two consequences of using plain git:
+anonymously and is reported as unreachable.
+
+**Hugging Face.** A Hub repository is a git repository, so a model or dataset
+repository can be registered like any other: `https://huggingface.co/datasets/owner/name`
+for a dataset, `https://huggingface.co/owner/name` for a model. Participants who
+run their model on Hugging Face (a scheduled Space or job) commit forecast files
+to such a repository. Hugging Face stores `*.gz`, `*.parquet` and any file over
+10 MB through Git LFS (newer repositories through Xet, which keeps LFS
+compatibility), so those files are small pointers in git. See the next
+paragraph: the CI resolves them. Only public repositories are read; a private or
+gated one is reported as unreachable.
+
+**Git LFS.** A file stored with Git LFS (on any host) is a pointer in git. When
+the CI fetches a file that is one, it asks the host's public Git LFS API for the
+file, which needs no credential for a public repository, and checks the result
+against the pointer's size and SHA-256. A file larger than `submissions$repos$max_file_mb`
+is reported as too large without being downloaded. If the host will not serve the
+file, the file is reported as invalid (the reason says it is an unresolved LFS
+pointer). The download address the host returns must be https. Two consequences of using plain git:
 a file's size is only known once it is fetched, so `max_file_mb` rejects a
 too-large file after downloading it; and a repository is identified by its
 address, so a renamed repository needs its registry row updated (the first-wins

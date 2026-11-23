@@ -342,8 +342,15 @@ process_submission <- function(path, cfg, out_dir, pub_datetime = Sys.time(),
   if (file.size(path) > max_bytes) {
     return(invalid(paste0("file is larger than ", round(max_bytes / 1e6), " MB")))
   }
-  if (is_lfs_pointer(path)) {
-    return(invalid("the file is a Git LFS pointer, not the forecast; commit the file itself"))
+  pointer <- lfs_pointer(path)
+  if (!is.null(pointer)) {
+    # A pointer that is still one was not resolved: too big, or the host would not serve it.
+    if (pointer$size > max_bytes) {
+      return(invalid(paste0("file is larger than ", round(max_bytes / 1e6), " MB")))
+    }
+    return(invalid(paste("the file is a Git LFS pointer, not the forecast, and the host would",
+                         "not serve the file; commit it without LFS or check that the",
+                         "repository is public")))
   }
 
   info <- parse_submission_filename(name)
@@ -746,7 +753,7 @@ process_repo_submissions <- function(cfg, state) {
     fallback <- paste0("repo_", gsub("[^A-Za-z0-9_.-]", "_", repo))
     rows[[length(rows) + 1]] <- handle_submission(
       cfg, state, todo$key[i], source = repo, sha = sha, model_id = todo$model_id[i],
-      fetch = function(local) git_blob(handle, sha, local),
+      fetch = function(local) git_blob(handle, sha, local, max_bytes = max_bytes),
       context = context,
       results_name = if (is.na(todo$model_id[i])) fallback else todo$model_id[i],
       file = todo$path[i]
