@@ -498,6 +498,7 @@ dashboard_meta <- function(cfg, variables, baselines, stats, now, publish_result
     datasets = dashboard_datasets(cfg, variables, publish_results),
     leaderboard_max_horizon = settings$leaderboard_max_horizon,
     min_forecasts = settings$min_forecasts,
+    settle_days = settings$settle_days,
     horizons = as.list(dashboard_horizons(cfg))
   )
 }

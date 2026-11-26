@@ -46,7 +46,7 @@
 dashboard_settings <- function(cfg) {
   defaults <- list(n_plot_sites = 2, leaderboard_max_horizon = 35, excluded_models = list(),
                    content_dir = file.path("challenge", "dashboard"), extra_pages = list(),
-                   min_forecasts = 5, publish_results = TRUE)
+                   min_forecasts = 5, publish_results = TRUE, settle_days = 2)
   # Each setting replaces its default whole: modifyList() would merge the
   # unnamed `extra_pages` list into the empty default and lose it.
   settings <- defaults
@@ -187,7 +187,7 @@ write_dashboard_data <- function(cfg, out_dir, now, inputs, observations, regist
     scores <- inputs[[duration]]$scores
     duration_sites <- dplyr::filter(sites, .data$duration == !!duration)
     latest <- if (is.null(summaries)) empty_dashboard_table("forecasts") else
-      latest_forecasts(summaries, duration_sites, now)
+      latest_forecasts(summaries, duration_sites, now, settings$settle_days)
     scored <- if (is.null(scores)) empty_dashboard_table("analysis") else
       scored_forecasts(scores, duration_sites, now, lookback)
     cells <- NULL
@@ -261,11 +261,12 @@ empty_dashboard_table <- function(part) {
   )
 }
 
-# The most recent forecast of each variable made at least two days ago (so
-# most teams have submitted), at the plot sites. A variable with no forecast
-# that old yet (a new challenge) shows its newest one instead of nothing.
-latest_forecasts <- function(summaries, sites, now) {
-  cutoff <- now - lubridate::days(2)
+# The most recent forecast of each variable made at least `settle_days` days ago
+# (so most teams have submitted: a forecast for reference date D is shown by the
+# first update on day D + settle_days), at the plot sites. A variable with no
+# forecast that old yet (a new challenge) shows its newest one instead of nothing.
+latest_forecasts <- function(summaries, sites, now, settle_days = 2) {
+  cutoff <- now - lubridate::days(settle_days)
   newest <- function(df) {
     df |>
       dplyr::filter(.data$variable %in% !!unique(sites$variable)) |>

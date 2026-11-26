@@ -107,8 +107,8 @@ obs   {t[], v[]}            observations at the site, the last 120 days (full IS
 sets[] {id, reference, models {<model_id>: {d[], m[], l[], u[]}}}
 ```
 
-`id` is `latest` (the newest forecast made at least two days ago, so most
-models have submitted) or `scored` (the newest one that is a lookback old
+`id` is `latest` (the newest forecast made at least `settle_days` days ago,
+two by default, so most models have submitted) or `scored` (the newest one that is a lookback old
 enough to have observations: 30 days, or a year for weekly variables). `d` is
 days after `reference`, `m` the mean, and `l`, `u` the 95% interval. Long
 forecasts are thinned to at most 400 points. Numbers are rounded to 4

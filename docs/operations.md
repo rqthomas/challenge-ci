@@ -39,6 +39,7 @@ challenge sets its own. "Large" means the self-hosted runner named by
 | `drivers_stage3.yaml` (`_drivers_stage3.yaml`) | 23:00 | large | `run_stage() drivers-stage3 [rebuild]` | `drivers-stage3` |
 | `catalog.yaml` (`_catalog.yaml`) | 23:00 | GitHub | `run_stage() catalog`, then commits to `catalog_config$catalog_repo` (on `catalog_config$catalog_branch`) | `catalog` |
 | `dashboard.yaml` (`_dashboard.yaml`) | 08:00 | GitHub | `run_stage() dashboard`, publishes to the challenge's `gh-pages` | `dashboard` |
+| `pipeline.yaml` (the stages above, chained) | 03:17 daily | as each stage | targets, baselines (weekly ones on Sunday), submissions, bundling, scoring, then dashboard and catalog, in that order | each stage's own |
 | `docker.yaml` (`_docker.yaml`) | Sunday 00:00 | GitHub | builds `challenge/Dockerfile` as `ci$docker_image` | `docker` |
 | `check.yaml` (`_check.yaml`) | pull requests and pushes | GitHub | `run_stage() check` | — |
 
@@ -53,6 +54,53 @@ and `release.yaml` (see [developing.md](developing.md#releasing)).
 Each trigger has a `concurrency` group, so a run waits for the previous one
 instead of overlapping it. Each job has a `timeout-minutes` about three times
 its longest recent run.
+
+### Timing: one pipeline, and a deadline for submitters
+
+On GitHub's free runners a scheduled workflow does not start when its cron says.
+Measured on the example challenge over five days: the daily ones started 4 to 12
+hours late, a workflow set to run every 6 hours ran about twice a day, one set
+for every 2 hours three or four times, and some runs never happened. GitHub's
+documentation says the same: scheduled runs can be delayed under load (the start
+of every hour is a high-load time) and queued ones may be dropped. Each workflow
+is late by a different amount, so independent schedules do not keep their order,
+and the order matters here. The dashboard reads the *bundled* summaries and
+scores, so a forecast reaches the "latest forecast" only after it has been
+processed (submissions), bundled and then picked up by a dashboard run. If the
+bundling that holds a forecast runs after the day's dashboard, the forecast
+misses that dashboard, and the next day's dashboard has moved on to the next
+reference date. That is how a model whose forecasts arrive a day or two after
+their reference date was never shown.
+
+`pipeline.yaml` (in `inst/workflows`) fixes the order instead of the clock. One
+schedule (03:17 UTC, deliberately not on the hour) starts a single run whose jobs
+wait for each other: targets, baselines (the daily ones, and on Sunday the
+weekly ones), submissions, bundling, scoring, then the dashboard and the catalog.
+However late the run starts, the dashboard is built from forecasts that were read
+and bundled earlier in the same run. A stage that fails does not stop the ones
+after it, which work with what exists; the run is marked failed. Use it instead
+of the separate schedules: remove the `schedule:` from the stage triggers (they
+stay for manual runs and dry runs). A challenge with its own runners that keep
+time (the NEON challenge) can keep the separate schedules.
+
+**The deadline for submitters is a date, not a time.** A forecast for reference
+date D is shown as the latest at the first dashboard update on day
+D + `dashboard$settle_days` (default 2), so it must be committed or uploaded by
+the end of day D + `settle_days` − 1 (UTC). The pipeline starts after 03:17 on
+that day whatever the delay, so everything committed before midnight is in it.
+A forecast that misses the deadline is still stored and scored (the engine has no
+lateness rule); it only is not the one on those views. The Participate and
+Instructions pages state the deadline from the setting. Choose `settle_days`
+as the number of days after its reference date that your slowest regular
+submitter's forecast arrives: a submitter whose forecasts arrive 1 to 2 days
+late (the example submission, which starts from the latest weather run) needs 3.
+
+**What submitters should do.** Schedule the forecast job twice a day, at minutes
+that are not 0 (for example `47 5 * * *` and `47 13 * * *` UTC): a delayed run
+still finishes before the deadline, and the second covers a run GitHub dropped.
+The job must be safe to repeat; a second run that writes the same file changes
+nothing, and a different file for the same model, reference date, variable and
+duration is dropped (the first wins).
 
 ### Healthchecks
 

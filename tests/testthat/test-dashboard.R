@@ -55,6 +55,54 @@ test_that("latest_forecasts() keeps the newest settled forecast at plot sites", 
   expect_equal(nrow(out), 2)
 })
 
+test_that("settle_days sets how old the latest forecast must be", {
+  skip_if_not_installed("arrow")
+  summaries <- tidyr::expand_grid(
+    model_id = "m", site_id = "AAAA", variable = "temperature",
+    reference_datetime = utc(c("2024-06-01", "2024-06-05", "2024-06-08", "2024-06-09")),
+    lead = 0:2
+  ) |>
+    dplyr::mutate(datetime = reference_datetime + lead * 86400, mean = 1,
+                  quantile02.5 = 0, quantile97.5 = 2) |>
+    dplyr::select(-lead)
+  sites <- tibble::tibble(variable = "temperature", site_id = "AAAA")
+  newest <- function(now, days) {
+    out <- latest_forecasts(lazy_table(summaries), sites, utc(now), days)
+    format(max(as.Date(out$reference_datetime)))
+  }
+  expect_equal(newest("2024-06-10", 0), "2024-06-09")    # nothing to wait for
+  expect_equal(newest("2024-06-10", 2), "2024-06-05")    # the default
+  expect_equal(newest("2024-06-10", 6), "2024-06-01")
+  # A forecast for reference date D is shown by the first update on day D + settle_days,
+  # whatever the hour (an update is never exactly at midnight): D = 8 June, 2 days.
+  expect_equal(newest("2024-06-10 03:17:00", 2), "2024-06-08")
+  expect_equal(newest("2024-06-09 23:59:00", 2), "2024-06-05")   # the day before: not yet
+  expect_equal(newest("2024-06-10 03:17:00", 3), "2024-06-05")   # a longer wait: one day later
+  # The default is 2, as before the setting existed.
+  expect_equal(dashboard_settings(list())$settle_days, 2)
+})
+
+test_that("dashboard$settle_days is a whole number of days and reaches the meta file", {
+  cfg <- test_config()
+  errors <- function(x) {
+    cfg$dashboard$settle_days <- x
+    p <- config_problems(cfg)
+    p$message[p$severity == "error" & p$key == "dashboard$settle_days"]
+  }
+  for (ok in list(NULL, 0, 2, 3, 30)) expect_length(errors(ok), 0)
+  for (bad in list(-1, 1.5, 31, "two", c(2, 3), NA)) {
+    expect_match(errors(bad), "whole number of days", info = deparse(bad))
+  }
+  cfg <- dashboard_test_config()
+  cfg$dashboard$settle_days <- 3
+  meta <- dashboard_meta(cfg, dashboard_test_variables(cfg), skill_baselines(cfg),
+                         list(), utc("2024-06-30"))
+  expect_equal(meta$settle_days, 3)
+  cfg$dashboard$settle_days <- NULL
+  expect_equal(dashboard_meta(cfg, dashboard_test_variables(cfg), skill_baselines(cfg),
+                              list(), utc("2024-06-30"))$settle_days, 2)
+})
+
 test_that("latest_forecasts() falls back to the newest forecast for a new challenge", {
   skip_if_not_installed("arrow")
   now <- utc("2024-06-10")

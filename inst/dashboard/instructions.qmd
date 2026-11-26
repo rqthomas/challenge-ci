@@ -160,6 +160,25 @@ The csv file can only contain one unique `model_id`. One file can hold several v
 
 {{< include _content/instructions-submit.qmd >}}
 
+### When is my forecast shown?
+
+```{r}
+#| output: asis
+#| echo: false
+settle <- settings$settle_days
+if (isTRUE(settle == 0)) {
+  cat("A forecast is shown on the \"latest forecast\" views at the next dashboard update after it is read.\n")
+} else {
+  cat("The \"latest forecast\" on the Overview and the forecast explorer is the newest forecast whose reference date ",
+      "is at least ", settle, " day", if (settle != 1) "s", " old, so that most teams have submitted. A forecast for reference date ",
+      "D is therefore shown at the dashboard update on day D+", settle, ". Commit (or upload) it by the **end of day D",
+      if (settle > 1) paste0("+", settle - 1), " (UTC)**. ",
+      "The challenge updates once a day, but GitHub starts scheduled runs at varying times, sometimes hours late, ",
+      "so the deadline is a date, not a time of day. A forecast that misses it is still read and scored; ",
+      "it just is not the one shown on those views.\n", sep = "")
+}
+```
+
 ## Post-submission
 
 ### Processing

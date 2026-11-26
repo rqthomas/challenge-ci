@@ -58,6 +58,16 @@ optional and the defaults keep today's behaviour.
   no rows for the challenge is recorded as skipped and looked at again if it is
   edited. The published results gain `rows_kept` and `rows_dropped`, and `source`
   is now `host/owner/name`.
+- `inst/workflows/pipeline.yaml` runs the stages as one chain (targets, baselines,
+  submissions, bundling, scoring, then dashboard and catalog) from one daily
+  schedule, so their order holds however late GitHub starts the run. Free runners
+  start scheduled workflows 4 to 12 hours late and drop some; with independent
+  schedules a forecast could miss the bundling the dashboard needed, every day.
+  Use it instead of the separate schedules. See "Timing" in `docs/operations.md`.
+- New `dashboard$settle_days` (default 2, as before): how many days old a forecast
+  must be to be the "latest forecast". A forecast for reference date D is shown at
+  the first update on day D + `settle_days`; the Participate and Instructions pages
+  state the submission deadline from it, and `meta.json` has `settle_days`.
 - The Targets page shows the same code for reading a target file as the Data page (R,
   Python or command line): a direct read for a public bucket, and the key from
   `S3_KEY` and `S3_SECRET` only for a private one.

@@ -258,6 +258,11 @@ config_problems <- function(cfg) {
     add("error", "submissions$baselines_destination",
         paste0("must be one of ", paste(baseline_destinations, collapse = ", ")))
   }
+  settle <- cfg$dashboard$settle_days
+  if (!is.null(settle) && !(is.numeric(settle) && length(settle) == 1 && !is.na(settle) &&
+                              settle >= 0 && settle <= 30 && settle == round(settle))) {
+    add("error", "dashboard$settle_days", "must be a whole number of days from 0 to 30")
+  }
   horizons <- cfg$dashboard$horizons
   if (!is.null(horizons)) {
     days <- suppressWarnings(as.numeric(unlist(horizons)))
