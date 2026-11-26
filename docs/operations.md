@@ -204,6 +204,19 @@ paths, `<alias>/<bucket>/<key>`, which `bucket_uri(scheme = "remote")` builds.
   the same size and MD5 and, on Linux, sends four at a time
   (`challengeci.upload_workers`; two where `_R_CHECK_LIMIT_CORES_` is set, as it is
   during `R CMD check`, because the parallel package refuses more).
+- **A store that answers 503.** S3-compatible stores, Backblaze B2 included, now and
+  then answer `503 Service unavailable, please try again later` for longer than paws's
+  own retries last (a few short waits, under a minute in all). Every S3 call also goes
+  through `s3_retry()`: for an HTTP 408, 429, 500, 502, 503 or 504, a throttling code
+  (`SlowDown`, ...) or a dropped connection (see `?is_transient_s3_error`) it tries
+  again, 4 attempts with pauses of 15 s, then 30 s, then 45 s (options
+  `challengeci.s3_retries` and `challengeci.s3_retry_wait`). A multipart upload retries
+  each part, so one bad request does not restart the file. A refusal (400, 403, 404) is
+  not retried. If a file still fails, the stage carries on with the others, and a
+  baselines or bundling item that failed this way gets one more attempt when the rest are
+  done (after `challengeci.stage_retry_wait`, 60 s). If the stage still fails, run it
+  again by hand: baselines skip a forecast already written, and an upload replaces a file
+  of the same name.
 - paws signs requests for the store's region and addresses buckets path-style, so a
   custom endpoint such as Backblaze B2, OSN or Ceph works. It sends a checksum only
   where a request needs one, because some S3-compatible stores reject the extra

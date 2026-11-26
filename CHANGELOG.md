@@ -58,6 +58,14 @@ optional and the defaults keep today's behaviour.
   no rows for the challenge is recorded as skipped and looked at again if it is
   edited. The published results gain `rows_kept` and `rows_dropped`, and `source`
   is now `host/owner/name`.
+- Uploads and other S3 calls survive a store that answers 503 for a while (Backblaze B2
+  does, now and then; an overnight baselines run was lost to one). Calls that fail with an HTTP
+  500, 502, 503, 504, 429 or 408, a throttling code or a dropped connection are tried again,
+  4 attempts with pauses of 15, 30 and 45 s, on top of paws's own short retries; each part of
+  a multipart upload is retried alone; refusals (400, 403, 404) are not. A baselines or
+  bundling item that failed this way gets one more attempt after the rest. Options
+  `challengeci.s3_retries`, `challengeci.s3_retry_wait`, `challengeci.stage_retry_wait`.
+  New `is_transient_s3_error()`, and `with_retry()` takes `retry_if`.
 - `inst/workflows/pipeline.yaml` runs the stages as one chain (targets, baselines,
   submissions, bundling, scoring, then dashboard and catalog) from one daily
   schedule, so their order holds however late GitHub starts the run. Free runners

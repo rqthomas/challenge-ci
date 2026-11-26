@@ -213,26 +213,36 @@ arrow_bucket <- function(cfg, key, ..., anonymous = FALSE) {
 #'
 #' @param expr Expression to evaluate.
 #' @param times Maximum number of attempts.
-#' @param wait Seconds to wait after the first failure.
+#' @param wait Seconds to wait after the first failure; each later wait is
+#'   longer (`wait` times the number of failures so far).
+#' @param retry_if A function that takes an error and says whether to try again.
+#'   By default every error is retried. With it, an error it rejects is raised at
+#'   once, unchanged, and when every attempt fails the last error is raised
+#'   unchanged too (so its class and message are still what the caller expects).
 #' @return The value of `expr`. If every attempt fails, the last error is
-#'   re-raised.
+#'   re-raised (wrapped in "Failed after n attempts", unless `retry_if` is given).
 #' @export
 #' @examples
 #' with_retry(sqrt(4), times = 2, wait = 0)
-with_retry <- function(expr, times = 3, wait = 10) {
+with_retry <- function(expr, times = 3, wait = 10, retry_if = NULL) {
   expr <- substitute(expr)
   env <- parent.frame()
   for (attempt in seq_len(times)) {
     result <- tryCatch(eval(expr, env), error = identity)
     if (!inherits(result, "error")) return(result)
+    if (!is.null(retry_if) && !isTRUE(retry_if(result))) stop(result)
     if (attempt < times) {
-      cli::cli_warn(c(
+      notice <- c(
         "Attempt {attempt} of {times} failed; retrying in {wait * attempt}s.",
         "x" = conditionMessage(result)
-      ))
+      )
+      # A message, not a warning, when the caller chose what to retry (this runs
+      # inside forked upload workers too, where a warning would be lost).
+      if (is.null(retry_if)) cli::cli_warn(notice) else cli::cli_inform(notice)
       Sys.sleep(wait * attempt)
     }
   }
+  if (!is.null(retry_if)) stop(result)
   cli::cli_abort("Failed after {times} attempt{?s}.", parent = result)
 }
 

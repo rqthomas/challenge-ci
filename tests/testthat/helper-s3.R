@@ -120,8 +120,23 @@ fake_s3 <- function(page_size = 1000) {
             hook = function(name, fn) hooks[[name]] <<- fn, put = put, keys = keys_in)
 }
 
-# Register a fake client under an alias for the rest of the test.
+# An error as paws raises it: the classes carry the HTTP status, and the fields say
+# what the store answered.
+paws_http_error <- function(status, message, code = NULL) {
+  structure(class = c("paws_error", paste0("http_", status), "http_error", "error", "condition"),
+            list(message = message, call = NULL, status_code = status,
+                 error_response = if (!is.null(code)) list(Code = code)))
+}
+paws_503 <- function() {
+  paws_http_error(503, "ServiceUnavailable (HTTP 503). Service unavailable, please try again later.",
+                  "ServiceUnavailable")
+}
+
+# Register a fake client under an alias for the rest of the test. The pauses
+# between retries are 0 s, so a test that makes the fake fail does not wait.
 local_fake_s3 <- function(alias = "main", env = parent.frame(), ...) {
+  withr::local_options(challengeci.s3_retry_wait = 0, challengeci.stage_retry_wait = 0,
+                       .local_envir = env)
   fake <- fake_s3(...)
   remote_clients[[alias]] <- fake
   withr::defer(rm(list = alias, envir = remote_clients), envir = env)

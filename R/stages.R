@@ -52,16 +52,29 @@ run_stage <- function(args = commandArgs(trailingOnly = TRUE)) {
 }
 
 # Runs `fun` for each item, keeps going after a failure, and fails at the end.
+# An item that failed for a reason another attempt may fix (a store that answered
+# 503, say) gets one more attempt once the others are done and the store has had a
+# minute (`challengeci.stage_retry_wait`); a failure that is not transient does not.
+# Items must be safe to run again, as the stages' are.
 run_each <- function(items, fun, what) {
-  ok <- vapply(items, function(item) {
+  transient <- character()
+  try_item <- function(item, again = FALSE) {
     tryCatch({
       fun(item)
       TRUE
     }, error = function(e) {
-      cli::cli_alert_danger("{what} {item}: {conditionMessage(e)}")
+      cli::cli_alert_danger("{what} {item}{if (again) ' (second attempt)'}: {conditionMessage(e)}")
+      if (!again && looks_transient(e)) transient <<- c(transient, item)
       FALSE
     })
-  }, logical(1))
+  }
+  ok <- vapply(items, try_item, logical(1))
+  if (length(transient) > 0) {
+    wait <- getOption("challengeci.stage_retry_wait", 60)
+    cli::cli_alert_info("Trying {.val {transient}} again in {wait} s: the failure may pass.")
+    Sys.sleep(wait)
+    for (item in transient) ok[match(item, items)] <- try_item(item, again = TRUE)
+  }
   if (!all(ok)) cli::cli_abort("{what} failed for {.val {items[!ok]}}.")
   invisible(items)
 }

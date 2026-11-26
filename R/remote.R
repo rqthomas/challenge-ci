@@ -37,6 +37,78 @@ s3_client <- function(endpoint, region, key = "", secret = "", anonymous = FALSE
   ))
 }
 
+# Retrying S3 calls ---------------------------------------------------------------
+#
+# paws already retries a failed request a few times, but its waits are short
+# (a random delay up to 2^n seconds, at most 20, five times: under a minute in all).
+# S3-compatible stores, Backblaze B2 included, answer 503 "Service unavailable,
+# please try again later" for longer than that now and then, and one lost file
+# fails a stage. So every call also goes through s3_retry(): a few more attempts
+# with longer pauses, for the failures that are worth repeating.
+
+# HTTP statuses and S3 error codes that mean "try again", as opposed to a refusal
+# (400, 403, 404) that another attempt will not change.
+transient_s3_statuses <- c(408, 429, 500, 502, 503, 504)
+transient_s3_codes <- c("RequestTimeout", "RequestTimeoutException", "PriorRequestNotComplete",
+                        "ConnectionError", "HTTPClientError", "Throttling", "ThrottlingException",
+                        "ThrottledException", "RequestThrottled", "RequestLimitExceeded",
+                        "BandwidthLimitExceeded", "TooManyRequestsException", "SlowDown",
+                        "ServiceUnavailable", "InternalError")
+
+#' Is an S3 error one that another attempt may fix?
+#'
+#' True for an HTTP answer of 408, 429, 500, 502, 503 or 504, for the S3 error
+#' codes that mean throttling or a temporary fault (`SlowDown`,
+#' `ServiceUnavailable`, `RequestTimeout`, ...), and for a connection that was
+#' reset, refused or timed out. False for a refusal such as 400, 403 or 404, which
+#' another attempt will not change.
+#'
+#' @param e An error, such as one raised by a paws S3 call.
+#' @return `TRUE` or `FALSE`.
+#' @export
+#' @examples
+#' is_transient_s3_error(simpleError("Service unavailable (HTTP 503)"))
+#' is_transient_s3_error(simpleError("Access Denied"))
+is_transient_s3_error <- function(e) {
+  classes <- class(e)
+  http <- grep("^http_[0-9]{3}$", classes, value = TRUE)
+  status <- suppressWarnings(as.integer(c(sub("^http_", "", http), e[["status_code"]])))
+  if (any(status %in% transient_s3_statuses)) return(TRUE)
+  code <- e[["error_response"]][["Code"]] %||% e[["error_response"]][["__type"]]
+  if (!is.null(code) && code %in% transient_s3_codes) return(TRUE)
+  # An HTTP answer that was not one of those is a refusal. No answer at all (a
+  # dropped, refused or timed-out connection, a name that did not resolve) is not.
+  if (length(http) > 0 || length(status) > 0) return(FALSE)
+  message <- conditionMessage(e)
+  grepl(paste("timed out|timeout|connection (was )?(reset|refused|closed|aborted)|reset by peer",
+              "could not resolve|failed to connect|recv failure|send failure|empty reply",
+              "ssl connect|ssl_connect|http2 framing|transfer closed", sep = "|"),
+        message, ignore.case = TRUE)
+}
+
+# Does an error from a whole stage item (which may have wrapped the S3 error in
+# its own message) look like one that a second attempt may fix?
+looks_transient <- function(e) {
+  is_transient_s3_error(e) ||
+    grepl("\\(HTTP (408|429|500|502|503|504)\\)|ServiceUnavailable|SlowDown|RequestTimeout",
+          conditionMessage(e))
+}
+
+# Run an S3 call again after a transient failure: `challengeci.s3_retries` attempts
+# (default 4) with pauses of `challengeci.s3_retry_wait` seconds (default 15), then
+# twice that, and so on, on top of paws's own short retries. Any other error is
+# raised at once; after the last attempt the last error is raised unchanged.
+s3_retry <- function(expr) {
+  expr <- substitute(expr)
+  env <- parent.frame()
+  with_retry(
+    eval(expr, env),
+    times = getOption("challengeci.s3_retries", 4),
+    wait = getOption("challengeci.s3_retry_wait", 15),
+    retry_if = is_transient_s3_error
+  )
+}
+
 # The connection for an alias, or an error that says how to make it.
 remote_client <- function(alias) {
   client <- remote_clients[[alias]]
@@ -77,7 +149,7 @@ list_remote <- function(p) {
   repeat {
     args <- list(Bucket = p$bucket, Prefix = prefix)
     if (!is.null(token)) args$ContinuationToken <- token
-    page <- do.call(client$list_objects_v2, args)
+    page <- s3_retry(do.call(client$list_objects_v2, args))
     for (object in page$Contents) {
       keys <- c(keys, object$Key)
       sizes <- c(sizes, as.numeric(object$Size))
@@ -154,7 +226,7 @@ remote_exists <- function(path) {
   p <- parse_remote(path)
   client <- remote_client(p$alias)
   tryCatch({
-    client$head_object(Bucket = p$bucket, Key = p$key)
+    s3_retry(client$head_object(Bucket = p$bucket, Key = p$key))
     TRUE
   }, http_404 = function(e) FALSE)
 }
@@ -163,7 +235,8 @@ remote_exists <- function(path) {
 #' @export
 remote_download <- function(path, dest) {
   p <- parse_remote(path)
-  body <- remote_client(p$alias)$get_object(Bucket = p$bucket, Key = p$key)$Body
+  client <- remote_client(p$alias)
+  body <- s3_retry(client$get_object(Bucket = p$bucket, Key = p$key))$Body
   dir.create(dirname(dest), recursive = TRUE, showWarnings = FALSE)
   writeBin(body, dest)
   invisible(dest)
@@ -190,15 +263,16 @@ remote_put_file <- function(from, to) {
   size <- file.size(from)
   type <- guess_content_type(from)
   if (size <= getOption("challengeci.multipart_threshold", 64e6)) {
-    client$put_object(Bucket = p$bucket, Key = p$key, ContentType = type,
-                      Body = readBin(from, "raw", size))
+    s3_retry(client$put_object(Bucket = p$bucket, Key = p$key, ContentType = type,
+                               Body = readBin(from, "raw", size)))
     return(invisible(to))
   }
 
   # S3 needs every part but the last to be at least 5 MiB, and allows 10,000 parts.
   part_size <- max(5 * 1024^2, ceiling(size / 9000),
                    getOption("challengeci.part_size", 32 * 1024^2))
-  upload <- client$create_multipart_upload(Bucket = p$bucket, Key = p$key, ContentType = type)
+  upload <- s3_retry(client$create_multipart_upload(Bucket = p$bucket, Key = p$key,
+                                                    ContentType = type))
   tryCatch({
     con <- file(from, "rb")
     on.exit(close(con), add = TRUE)
@@ -207,13 +281,15 @@ remote_put_file <- function(from, to) {
       chunk <- readBin(con, "raw", part_size)
       if (length(chunk) == 0) break
       number <- length(parts) + 1
-      sent <- client$upload_part(Bucket = p$bucket, Key = p$key, UploadId = upload$UploadId,
-                                 PartNumber = number, Body = chunk)
+      # Each part is retried on its own, so one bad request does not restart the file.
+      sent <- s3_retry(client$upload_part(Bucket = p$bucket, Key = p$key,
+                                          UploadId = upload$UploadId, PartNumber = number,
+                                          Body = chunk))
       parts[[number]] <- list(ETag = sent$ETag, PartNumber = number)
     }
-    client$complete_multipart_upload(Bucket = p$bucket, Key = p$key,
-                                     UploadId = upload$UploadId,
-                                     MultipartUpload = list(Parts = parts))
+    s3_retry(client$complete_multipart_upload(Bucket = p$bucket, Key = p$key,
+                                              UploadId = upload$UploadId,
+                                              MultipartUpload = list(Parts = parts)))
   }, error = function(e) {
     try(client$abort_multipart_upload(Bucket = p$bucket, Key = p$key,
                                       UploadId = upload$UploadId), silent = TRUE)
@@ -285,8 +361,9 @@ remote_move <- function(from, to) {
   }
   client <- remote_client(f$alias)
   # paws URL-encodes the copy source itself.
-  client$copy_object(Bucket = t$bucket, Key = t$key, CopySource = paste0(f$bucket, "/", f$key))
-  client$delete_object(Bucket = f$bucket, Key = f$key)
+  s3_retry(client$copy_object(Bucket = t$bucket, Key = t$key,
+                              CopySource = paste0(f$bucket, "/", f$key)))
+  s3_retry(client$delete_object(Bucket = f$bucket, Key = f$key))
   invisible(to)
 }
 
@@ -295,15 +372,15 @@ remote_delete <- function(path, recursive = FALSE) {
   p <- parse_remote(path)
   client <- remote_client(p$alias)
   if (!recursive) {
-    client$delete_object(Bucket = p$bucket, Key = p$key)
+    s3_retry(client$delete_object(Bucket = p$bucket, Key = p$key))
     return(invisible(path))
   }
   keys <- list_remote(p)$key
   for (batch in split(keys, ceiling(seq_along(keys) / 1000))) {
-    result <- client$delete_objects(
+    result <- s3_retry(client$delete_objects(
       Bucket = p$bucket,
       Delete = list(Objects = lapply(batch, function(key) list(Key = key)), Quiet = TRUE)
-    )
+    ))
     if (length(result$Errors) > 0) {
       cli::cli_abort("Could not delete {length(result$Errors)} object{?s} under {.path {path}}.")
     }
@@ -317,6 +394,13 @@ remote_delete <- function(path, recursive = FALSE) {
 #' replacing remote files of the same name, leaving other remote files alone and
 #' skipping files that are already there unchanged. In a dry run (see
 #' [is_dry_run()]) both copy to [output_uri()] instead.
+#'
+#' A request that fails for a reason another attempt may fix (an HTTP 500, 502, 503
+#' or 504, a throttling answer, a dropped connection: see
+#' [is_transient_s3_error()]) is repeated, on top of paws's own short retries: by
+#' default 4 attempts, pausing 15 s, then 30 s, then 45 s (options
+#' `challengeci.s3_retries` and `challengeci.s3_retry_wait`). A refusal such as
+#' 403 fails at once.
 #'
 #' A file over 64 MB is uploaded in parts of 32 MiB (the
 #' `challengeci.multipart_threshold` and `challengeci.part_size` options, in

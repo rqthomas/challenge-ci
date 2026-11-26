@@ -25,6 +25,13 @@ skipping files that are already there unchanged. In a dry run (see
 \code{\link[=is_dry_run]{is_dry_run()}}) both copy to \code{\link[=output_uri]{output_uri()}} instead.
 }
 \details{
+A request that fails for a reason another attempt may fix (an HTTP 500, 502, 503
+or 504, a throttling answer, a dropped connection: see
+\code{\link[=is_transient_s3_error]{is_transient_s3_error()}}) is repeated, on top of paws's own short retries: by
+default 4 attempts, pausing 15 s, then 30 s, then 45 s (options
+\code{challengeci.s3_retries} and \code{challengeci.s3_retry_wait}). A refusal such as
+403 fails at once.
+
 A file over 64 MB is uploaded in parts of 32 MiB (the
 \code{challengeci.multipart_threshold} and \code{challengeci.part_size} options, in
 bytes; S3 does not take parts under 5 MiB). \code{upload_dir()} sends several files

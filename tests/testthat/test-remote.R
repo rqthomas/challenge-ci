@@ -141,7 +141,8 @@ test_that("a failed multipart upload is aborted, not left behind", {
   fake_hook(fake, "upload_part", function(args) if (args$PartNumber == 2) stop("connection reset"))
   from <- withr::local_tempfile()
   writeBin(raw(12e6), from)
-  expect_error(remote_put_file(from, "main/bkt/big/x.bin"), "connection reset")
+  # (A reset connection is retried first, so there are retry messages before the error.)
+  suppressMessages(expect_error(remote_put_file(from, "main/bkt/big/x.bin"), "connection reset"))
   expect_true("abort_multipart_upload" %in% fake_calls(fake))
   expect_false("complete_multipart_upload" %in% fake_calls(fake))
   expect_length(fake_keys(fake, "bkt"), 0)
@@ -244,4 +245,118 @@ test_that("remove_remote() deletes one object or a whole folder in batches", {
   remove_remote("main/bkt/scratch", recursive = TRUE)
   expect_equal(fake_keys(fake, "bkt"), "keep/a")
   expect_equal(sum(fake_calls(fake) == "delete_objects"), 3)   # 1000 + 1000 + 300
+})
+
+# Transient failures: a store that answers 503 for a while --------------------------------
+
+# Make `name` fail with `error` for its first `n` calls, then work.
+fail_first <- function(fake, name, n, error = paws_503) {
+  failures <- 0
+  fake_hook(fake, name, function(args) {
+    if (failures < n) {
+      failures <<- failures + 1
+      stop(error())
+    }
+  })
+}
+
+test_that("which S3 errors are worth another attempt", {
+  yes <- list(
+    paws_503(), paws_http_error(500, "Internal"), paws_http_error(502, "Bad gateway"),
+    paws_http_error(504, "Timeout"), paws_http_error(429, "Slow down"),
+    paws_http_error(400, "RequestTimeout", "RequestTimeout"),
+    structure(class = c("paws_error", "error", "condition"),
+              list(message = "x", call = NULL, error_response = list(Code = "SlowDown"))),
+    simpleError("Failed to connect to s3.us-east-005.backblazeb2.com port 443"),
+    simpleError("Connection reset by peer"), simpleError("Could not resolve host: x.org"),
+    simpleError("Timeout was reached")
+  )
+  no <- list(
+    paws_http_error(403, "Access Denied"), paws_http_error(404, "NoSuchKey"),
+    paws_http_error(400, "EntityTooSmall"), paws_http_error(412, "PreconditionFailed"),
+    simpleError("object not found"), simpleError("arguments imply differing number of rows")
+  )
+  for (e in yes) expect_true(is_transient_s3_error(e), info = conditionMessage(e))
+  for (e in no) expect_false(is_transient_s3_error(e), info = conditionMessage(e))
+  # A stage's own message about an S3 failure counts too.
+  expect_true(looks_transient(simpleError("1 file did not upload: x.parquet: ServiceUnavailable (HTTP 503).")))
+  expect_false(looks_transient(simpleError("Baselines failed: no targets")))
+})
+
+test_that("an upload survives a store that answers 503 a few times", {
+  fake <- local_fake_s3()
+  fail_first(fake, "put_object", 2)
+  from <- withr::local_tempfile(lines = "x", fileext = ".csv")
+  expect_message(remote_put_file(from, "main/bkt/t/x.csv"), "retrying")
+  expect_equal(sum(fake_calls(fake) == "put_object"), 3)
+  expect_equal(fake_keys(fake, "bkt"), "t/x.csv")
+})
+
+test_that("an upload that keeps getting 503 fails with that error after the attempts", {
+  fake <- local_fake_s3()
+  withr::local_options(challengeci.s3_retries = 3)
+  fail_first(fake, "put_object", Inf)
+  from <- withr::local_tempfile(lines = "x", fileext = ".csv")
+  err <- suppressMessages(expect_error(remote_put_file(from, "main/bkt/t/x.csv"), "HTTP 503"))
+  expect_s3_class(err, "http_503")
+  expect_equal(sum(fake_calls(fake) == "put_object"), 3)
+})
+
+test_that("a refusal is not retried", {
+  fake <- local_fake_s3()
+  fail_first(fake, "put_object", Inf, error = function() paws_http_error(403, "Access Denied"))
+  from <- withr::local_tempfile(lines = "x", fileext = ".csv")
+  expect_error(remote_put_file(from, "main/bkt/t/x.csv"), "Access Denied")
+  expect_equal(sum(fake_calls(fake) == "put_object"), 1)
+})
+
+test_that("only the part that failed is sent again", {
+  fake <- local_fake_s3()
+  withr::local_options(challengeci.multipart_threshold = 1e6, challengeci.part_size = 1e6)
+  failures <- 0
+  fake_hook(fake, "upload_part", function(args) {
+    if (args$PartNumber == 2 && failures < 1) {
+      failures <<- failures + 1
+      stop(paws_503())
+    }
+  })
+  from <- withr::local_tempfile(fileext = ".parquet")
+  body <- as.raw(rep(0:255, length.out = 12e6))
+  writeBin(body, from)
+  suppressMessages(remote_put_file(from, "main/bkt/big/data_0.parquet"))
+  expect_equal(fake_calls(fake), c("create_multipart_upload", "upload_part", "upload_part",
+                                   "upload_part", "upload_part", "complete_multipart_upload"))
+  dest <- withr::local_tempfile()
+  remote_download("main/bkt/big/data_0.parquet", dest)
+  expect_identical(readBin(dest, "raw", 13e6), body)
+})
+
+test_that("listing, reading and checking an object survive a 503 too, and a 404 still means missing", {
+  fake <- local_fake_s3()
+  fake_put(fake, "bkt", "f/a.txt", "hello\n")
+  fail_first(fake, "list_objects_v2", 1)
+  expect_message(files <- remote_files("main/bkt/f"), "retrying")
+  expect_equal(files$key, "a.txt")
+
+  fail_first(fake, "get_object", 2)
+  dest <- withr::local_tempfile()
+  suppressMessages(remote_download("main/bkt/f/a.txt", dest))
+  expect_equal(readLines(dest), "hello")
+
+  fail_first(fake, "head_object", 1)
+  expect_true(suppressMessages(remote_exists("main/bkt/f/a.txt")))
+  # A missing object is still FALSE, at once, not a failure to retry.
+  fake_hook(fake, "head_object", function(args) NULL)
+  before <- sum(fake_calls(fake) == "head_object")
+  expect_false(remote_exists("main/bkt/f/nothing.txt"))
+  expect_equal(sum(fake_calls(fake) == "head_object") - before, 1)
+})
+
+test_that("a folder upload retries the file that got a 503 and loses nothing", {
+  fake <- local_fake_s3()
+  withr::local_options(challengeci.upload_workers = 1)
+  fail_first(fake, "put_object", 1)
+  dir <- local_folder(list("a/f.parquet" = "one", "b.json" = "{}"))
+  suppressMessages(upload_dir(dir, "main/bkt/dest"))
+  expect_equal(fake_keys(fake, "bkt", "dest/"), c("dest/a/f.parquet", "dest/b.json"))
 })

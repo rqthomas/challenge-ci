@@ -113,3 +113,38 @@ test_that("public URIs name the region only when it is not the default", {
                paste0("s3://anonymous@b/forecasts?endpoint_override=",
                       "s3.us-east-005.backblazeb2.com&region=us-east-005"))
 })
+
+test_that("with_retry(retry_if =) repeats only what it is told to, and raises the original error", {
+  failing_with <- function(first, then = "ok") {
+    calls <- 0
+    function() {
+      calls <<- calls + 1
+      if (calls <= length(first)) stop(first[[calls]])
+      then
+    }
+  }
+  transient <- function(e) grepl("blip", conditionMessage(e))
+
+  # A transient failure is repeated, quietly (a message, not a warning).
+  flaky <- failing_with(list(simpleError("a blip"), simpleError("another blip")))
+  expect_message(result <- with_retry(flaky(), times = 4, wait = 0, retry_if = transient), "retrying")
+  expect_equal(result, "ok")
+
+  # Anything else is raised at once, unchanged (its class is kept).
+  refused <- failing_with(list(structure(class = c("http_403", "error", "condition"),
+                                         list(message = "Access Denied", call = NULL))))
+  calls <- 0
+  err <- expect_error(with_retry({ calls <- calls + 1; refused() }, times = 4, wait = 0,
+                                 retry_if = transient), "Access Denied")
+  expect_s3_class(err, "http_403")
+  expect_equal(calls, 1)
+
+  # When every attempt fails the last error is raised unchanged, not wrapped.
+  calls <- 0
+  err <- suppressMessages(expect_error(
+    with_retry({ calls <- calls + 1; stop(structure(class = c("http_503", "error", "condition"),
+                                                    list(message = "still a blip", call = NULL))) },
+               times = 3, wait = 0, retry_if = transient), "still a blip"))
+  expect_s3_class(err, "http_503")
+  expect_equal(calls, 3)
+})

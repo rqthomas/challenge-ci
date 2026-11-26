@@ -4,18 +4,24 @@
 \alias{with_retry}
 \title{Run an expression again if it fails}
 \usage{
-with_retry(expr, times = 3, wait = 10)
+with_retry(expr, times = 3, wait = 10, retry_if = NULL)
 }
 \arguments{
 \item{expr}{Expression to evaluate.}
 
 \item{times}{Maximum number of attempts.}
 
-\item{wait}{Seconds to wait after the first failure.}
+\item{wait}{Seconds to wait after the first failure; each later wait is
+longer (\code{wait} times the number of failures so far).}
+
+\item{retry_if}{A function that takes an error and says whether to try again.
+By default every error is retried. With it, an error it rejects is raised at
+once, unchanged, and when every attempt fails the last error is raised
+unchanged too (so its class and message are still what the caller expects).}
 }
 \value{
 The value of \code{expr}. If every attempt fails, the last error is
-re-raised.
+re-raised (wrapped in "Failed after n attempts", unless \code{retry_if} is given).
 }
 \description{
 For flaky network calls. Waits \code{wait} seconds after the first failure,
