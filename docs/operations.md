@@ -93,14 +93,21 @@ lateness rule); it only is not the one on those views. The Participate and
 Instructions pages state the deadline from the setting. Choose `settle_days`
 as the number of days after its reference date that your slowest regular
 submitter's forecast arrives: a submitter whose forecasts arrive 1 to 2 days
-late (the example submission, which starts from the latest weather run) needs 3.
+late needs 3. (The example submission is dated the day it is made, from the previous day's
+weather run, so it needs only the default.)
 
-**What submitters should do.** Schedule the forecast job twice a day, at minutes
-that are not 0 (for example `47 5 * * *` and `47 13 * * *` UTC): a delayed run
-still finishes before the deadline, and the second covers a run GitHub dropped.
-The job must be safe to repeat; a second run that writes the same file changes
-nothing, and a different file for the same model, reference date, variable and
-duration is dropped (the first wins).
+**What submitters should do.** Time the forecast job by when its inputs are ready, not
+by the clock, and run it twice a day at minutes that are not 0. GitHub starts a
+scheduled run late, never early, so the first run only has to be later than the
+inputs. Find when they are ready: the example submission reads a weather dataset
+that is updated once a day at about 06:45 UTC (the history of its Icechunk
+repository shows it: 06:39 to 06:47 over a week), and the update completes the
+previous day's run, so it runs at 07:47 and 11:47 UTC. A delayed run still finishes
+before the deadline, and the second covers a run GitHub dropped. The job must be
+safe to repeat, and must end quietly, without failing, when its inputs are not
+ready; a second run that writes the same file changes nothing, and a different
+file for the same model, reference date, variable and duration is dropped (the
+first wins).
 
 ### Healthchecks
 
